@@ -2,6 +2,7 @@ import { nanoid } from "nanoid";
 
 import { db } from "@/db/local-database";
 import { projectSchema } from "@/schemas/network.schema";
+import { migrateProject } from "@/services/project-migrations";
 import type { NetLabProject } from "@/types/network";
 
 export interface ProjectRepository {
@@ -15,16 +16,16 @@ export interface ProjectRepository {
 export class IndexedDbProjectRepository implements ProjectRepository {
   async list(): Promise<NetLabProject[]> {
     const projects = await db.projects.orderBy("updatedAt").reverse().toArray();
-    return projects.map((project) => projectSchema.parse(project));
+    return projects.map((project) => projectSchema.parse(migrateProject(project)));
   }
 
   async get(id: string): Promise<NetLabProject | undefined> {
     const project = await db.projects.get(id);
-    return project ? projectSchema.parse(project) : undefined;
+    return project ? projectSchema.parse(migrateProject(project)) : undefined;
   }
 
   async save(input: NetLabProject): Promise<NetLabProject> {
-    const project = projectSchema.parse({ ...input, updatedAt: new Date().toISOString() });
+    const project = projectSchema.parse(migrateProject({ ...input, updatedAt: new Date().toISOString() }));
     await db.transaction("rw", db.projects, db.projectVersions, async () => {
       const previous = await db.projects.get(project.id);
       if (previous) {

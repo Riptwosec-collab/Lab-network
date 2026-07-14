@@ -33,13 +33,20 @@ export function NetworkEdge({
         markerEnd={markerEnd}
         style={{
           stroke:
-            data?.status === "down"
+            data?.status === "down" || data?.status === "administratively-down"
               ? "var(--link-down)"
               : data?.status === "degraded"
                 ? "var(--warning)"
                 : "var(--link-active)",
           strokeWidth: selected ? 3 : 2,
-          strokeDasharray: data?.status === "down" ? "7 6" : data?.status === "degraded" ? "2 5" : undefined,
+          strokeDasharray:
+            data?.status === "down" || data?.status === "administratively-down"
+              ? "7 6"
+              : data?.pathStyle === "logical" || data?.pathStyle === "tunnel"
+                ? "4 5"
+                : data?.pathStyle === "wireless" || data?.status === "degraded"
+                  ? "2 5"
+                  : undefined,
         }}
       />
       <EdgeLabelRenderer>
@@ -49,7 +56,7 @@ export function NetworkEdge({
         >
           <span
             className={
-              data?.status === "down"
+              data?.status === "down" || data?.status === "administratively-down"
                 ? "text-destructive"
                 : data?.status === "degraded"
                   ? "text-warning"
@@ -58,7 +65,7 @@ export function NetworkEdge({
           >
             {data?.status?.toUpperCase() ?? "UP"}
           </span>{" "}
-          · {data?.bandwidthMbps ?? 1000}M
+          · {data?.bandwidthMbps ?? 1000}M · {data?.cableType ?? "copper"}
         </span>
       </EdgeLabelRenderer>
     </>

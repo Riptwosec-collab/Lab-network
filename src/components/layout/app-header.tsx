@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BookOpen, FlaskConical, LayoutDashboard, Moon, Network, Settings, Sun } from "lucide-react";
+import { BookOpen, FlaskConical, LayoutDashboard, Moon, Network, Settings, Shapes, Sun } from "lucide-react";
 
 import { useNetLabTheme } from "@/components/theme-provider";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,7 @@ const navItems = [
   { href: "/workspace", label: "Workspace", icon: Network },
   { href: "/academy", label: "Academy", icon: BookOpen },
   { href: "/labs", label: "Labs", icon: FlaskConical },
+  { href: "/symbols", label: "Legend", icon: Shapes },
 ];
 
 export function AppHeader() {

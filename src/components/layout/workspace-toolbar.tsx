@@ -15,6 +15,7 @@ import {
   PanelRight,
   Redo2,
   Save,
+  Shapes,
   Sun,
   Undo2,
 } from "lucide-react";
@@ -137,6 +138,16 @@ export function WorkspaceToolbar() {
         <ToolButton label="Fit topology ในหน้าจอ" onClick={() => window.dispatchEvent(new Event("netlab:fit-view"))}>
           <Maximize2 />
         </ToolButton>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button asChild variant="ghost" size="icon" className="size-8" aria-label="เปิด Diagram Symbols & Legend">
+              <Link href="/symbols">
+                <Shapes />
+              </Link>
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Diagram Symbols &amp; Legend</TooltipContent>
+        </Tooltip>
       </div>
 
       <div className="ml-auto flex items-center gap-1">

@@ -5,7 +5,7 @@ import { projectRepository } from "@/db/project-repository";
 import { createDemoProject } from "@/data/demo-topology";
 import { ProjectSaveError } from "@/lib/errors";
 import { projectSchema } from "@/schemas/network.schema";
-import type { NetLabProject, TopologySnapshot } from "@/types/network";
+import { CURRENT_PROJECT_SCHEMA_VERSION, type NetLabProject, type TopologySnapshot } from "@/types/network";
 
 export type SaveStatus = "idle" | "saving" | "saved" | "error";
 
@@ -36,7 +36,7 @@ const blankProject = (name = "Untitled Network"): NetLabProject => {
     name,
     description: "โปรเจกต์เครือข่ายใหม่",
     version: "0.1.0",
-    schemaVersion: 1,
+    schemaVersion: CURRENT_PROJECT_SCHEMA_VERSION,
     devices: [],
     connections: [],
     groups: [],

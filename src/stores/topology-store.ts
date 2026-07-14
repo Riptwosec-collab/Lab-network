@@ -1,6 +1,7 @@
 import { nanoid } from "nanoid";
 import { create } from "zustand";
 
+import { canUseCable, isInterfaceAvailable } from "@/domain/interfaces/port-compatibility";
 import { connectionSchema, deviceSchema } from "@/schemas/network.schema";
 import { useHistoryStore } from "@/stores/history-store";
 import type { NetworkConnection, NetworkDevice, TopologySnapshot } from "@/types/network";
@@ -85,11 +86,22 @@ export const useTopologyStore = create<TopologyState>((set, get) => ({
   addConnection: (input) => {
     const connection = connectionSchema.parse(input);
     const state = get();
-    if (
-      !state.devices.some((device) => device.id === connection.sourceDeviceId) ||
-      !state.devices.some((device) => device.id === connection.targetDeviceId)
-    ) {
+    const sourceDevice = state.devices.find((device) => device.id === connection.sourceDeviceId);
+    const targetDevice = state.devices.find((device) => device.id === connection.targetDeviceId);
+    if (!sourceDevice || !targetDevice) {
       throw new Error("Connection references an unknown device");
+    }
+    const sourceInterface = sourceDevice.interfaces.find((item) => item.id === connection.sourceInterfaceId);
+    const targetInterface = targetDevice.interfaces.find((item) => item.id === connection.targetInterfaceId);
+    if (connection.sourceInterfaceId && connection.targetInterfaceId && (!sourceInterface || !targetInterface)) {
+      throw new Error("Connection references an unknown interface");
+    }
+    if (sourceInterface && targetInterface) {
+      if (!isInterfaceAvailable(state, sourceInterface.id) || !isInterfaceAvailable(state, targetInterface.id)) {
+        throw new Error("Selected interface is already connected");
+      }
+      const compatibility = canUseCable(sourceInterface, targetInterface, connection.cableType);
+      if (!compatibility.compatible) throw new Error(compatibility.reason ?? "Incompatible interfaces");
     }
     useHistoryStore.getState().record(snapshotFrom(state));
     set((current) => ({ connections: [...current.connections, connection], selectedConnectionId: connection.id }));

@@ -82,6 +82,10 @@ export function NetworkCanvas() {
         jitterMs: 0,
         packetLossPercent: 0,
         duplex: "full",
+        mtu: 1500,
+        protocol: "ethernet",
+        direction: "bidirectional",
+        pathStyle: "physical",
         createdAt: now,
       };
       addConnection(networkConnection);

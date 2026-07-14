@@ -5,6 +5,8 @@ import { Handle, Position, type NodeProps } from "@xyflow/react";
 import {
   Cloud,
   CloudCog,
+  Cable,
+  Cpu,
   HardDrive,
   Laptop,
   Monitor,
@@ -37,6 +39,8 @@ const icons = {
   Printer,
   Cloud,
   CloudCog,
+  Cable,
+  Cpu,
 };
 
 function DeviceNodeComponent({ data, selected }: NodeProps<NetworkFlowNode>) {
@@ -55,15 +59,19 @@ function DeviceNodeComponent({ data, selected }: NodeProps<NetworkFlowNode>) {
               ? "HardDrive"
               : device.category === "cloud"
                 ? "Cloud"
-                : device.category === "server"
-                  ? "Server"
-                  : device.type === "laptop"
-                    ? "Laptop"
-                    : device.type === "smartphone"
-                      ? "Smartphone"
-                      : device.type === "printer"
-                        ? "Printer"
-                        : "Monitor";
+                : device.category === "iot"
+                  ? "Cpu"
+                  : device.category === "infrastructure"
+                    ? "Cable"
+                    : device.category === "server"
+                      ? "Server"
+                      : device.type === "laptop"
+                        ? "Laptop"
+                        : device.type === "smartphone"
+                          ? "Smartphone"
+                          : device.type === "printer"
+                            ? "Printer"
+                            : "Monitor";
   const Icon = icons[iconName];
   const managementIp = device.interfaces.find((networkInterface) => networkInterface.ipv4)?.ipv4;
   const upPorts = device.interfaces.filter((networkInterface) => networkInterface.status === "up").length;

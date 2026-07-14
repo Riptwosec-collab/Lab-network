@@ -3,7 +3,9 @@
 import { useMemo, useState } from "react";
 import {
   ChevronDown,
+  Cable,
   Cloud,
+  Cpu,
   GripVertical,
   HardDrive,
   Monitor,
@@ -18,7 +20,8 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { deviceCatalog } from "@/data/device-catalog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { deviceCatalog, deviceRegistry } from "@/data/device-catalog";
 import { cn } from "@/lib/utils";
 import type { DeviceCategory } from "@/types/network";
 
@@ -30,21 +33,18 @@ const categoryMeta: Record<DeviceCategory, { label: string; icon: typeof Router 
   server: { label: "Servers", icon: Server },
   storage: { label: "Storage", icon: HardDrive },
   "end-device": { label: "End devices", icon: Monitor },
+  iot: { label: "IoT & OT", icon: Cpu },
   cloud: { label: "Cloud", icon: Cloud },
+  infrastructure: { label: "Infrastructure", icon: Cable },
 };
 
 export function DeviceLibrary({ className, onClose }: { className?: string; onClose?: () => void }) {
   const [query, setQuery] = useState("");
+  const [category, setCategory] = useState<DeviceCategory | undefined>();
+  const [vendor, setVendor] = useState<string | undefined>();
+  const vendors = useMemo(() => Array.from(new Set(deviceCatalog.map((device) => device.vendor))).sort(), []);
   const [collapsed, setCollapsed] = useState<Set<DeviceCategory>>(new Set());
-  const devices = useMemo(
-    () =>
-      deviceCatalog.filter((device) =>
-        `${device.displayName} ${device.category} ${device.capabilities.join(" ")}`
-          .toLowerCase()
-          .includes(query.toLowerCase()),
-      ),
-    [query],
-  );
+  const devices = useMemo(() => deviceRegistry.search(query, { category, vendor }), [category, query, vendor]);
 
   const toggleCategory = (category: DeviceCategory) => {
     setCollapsed((current) => {
@@ -64,7 +64,9 @@ export function DeviceLibrary({ className, onClose }: { className?: string; onCl
         <div className="mb-2 flex items-center justify-between">
           <div>
             <p className="text-xs font-semibold tracking-[0.16em] uppercase">Device Library</p>
-            <p className="text-muted-foreground text-[10px]">{deviceCatalog.length} registry definitions</p>
+            <p className="text-muted-foreground text-[10px]">
+              {devices.length}/{deviceCatalog.length} registry definitions
+            </p>
           </div>
           {onClose && (
             <Button variant="ghost" size="icon" className="size-8" aria-label="ปิด Device Library" onClick={onClose}>
@@ -81,6 +83,40 @@ export function DeviceLibrary({ className, onClose }: { className?: string; onCl
             className="pl-9"
           />
         </div>
+        <div className="mt-2 flex gap-1 overflow-x-auto pb-0.5" aria-label="กรองหมวดอุปกรณ์">
+          <Button
+            variant={!category ? "secondary" : "ghost"}
+            size="sm"
+            className="h-7 shrink-0 text-[10px]"
+            onClick={() => setCategory(undefined)}
+          >
+            All
+          </Button>
+          {Object.entries(categoryMeta).map(([key, meta]) => (
+            <Button
+              key={key}
+              variant={category === key ? "secondary" : "ghost"}
+              size="sm"
+              className="h-7 shrink-0 text-[10px]"
+              onClick={() => setCategory(key as DeviceCategory)}
+            >
+              {meta.label}
+            </Button>
+          ))}
+        </div>
+        <Select value={vendor ?? "all"} onValueChange={(value) => setVendor(value === "all" ? undefined : value)}>
+          <SelectTrigger className="mt-2 h-8 text-[11px]" aria-label="กรองผู้ผลิต">
+            <SelectValue placeholder="All vendors" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All vendors</SelectItem>
+            {vendors.map((item) => (
+              <SelectItem key={item} value={item}>
+                {item}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
       <div className="flex-1 overflow-y-auto p-2">
         {Array.from(new Set(devices.map((device) => device.category))).map((category) => {

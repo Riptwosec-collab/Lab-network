@@ -1,5 +1,6 @@
 import { ReactFlowProvider } from "@xyflow/react";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
 import { NetworkCanvas } from "@/components/canvas/network-canvas";
@@ -14,6 +15,14 @@ describe("workspace components", () => {
     render(<DeviceLibrary />);
     expect(screen.getByText("Branch Router")).toBeInTheDocument();
     expect(screen.getByText("Layer 2 Switch")).toBeInTheDocument();
+  });
+
+  it("filters the device library through registry metadata", async () => {
+    const user = userEvent.setup();
+    render(<DeviceLibrary />);
+    await user.type(screen.getByPlaceholderText("ค้นหาชื่อหรือ capability"), "VXLAN");
+    expect(screen.getByText("Leaf Switch")).toBeInTheDocument();
+    expect(screen.queryByText("Branch Router")).not.toBeInTheDocument();
   });
 
   it("renders the network canvas", () => {

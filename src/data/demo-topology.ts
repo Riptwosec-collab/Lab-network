@@ -1,7 +1,12 @@
 import { nanoid } from "nanoid";
 
 import { deviceRegistry } from "@/data/device-catalog";
-import type { NetLabProject, NetworkConnection, NetworkDevice } from "@/types/network";
+import {
+  CURRENT_PROJECT_SCHEMA_VERSION,
+  type NetLabProject,
+  type NetworkConnection,
+  type NetworkDevice,
+} from "@/types/network";
 
 const positions: ReadonlyArray<[string, number, number]> = [
   ["internet-cloud", 420, 40],
@@ -39,6 +44,10 @@ function connect(
     jitterMs: 0,
     packetLossPercent: 0,
     duplex: "full",
+    mtu: 1500,
+    protocol: cableType === "wireless" ? "802.11" : "ethernet",
+    direction: "bidirectional",
+    pathStyle: cableType === "wireless" ? "wireless" : cableType === "virtual" ? "logical" : "physical",
     createdAt: new Date().toISOString(),
   };
 }
@@ -91,7 +100,7 @@ export function createDemoProject(): NetLabProject {
     name: "NetLab Demo Campus",
     description: "Topology ตัวอย่าง Internet, Firewall, Switching, Wi-Fi และ NAS",
     version: "0.1.0",
-    schemaVersion: 1,
+    schemaVersion: CURRENT_PROJECT_SCHEMA_VERSION,
     devices,
     connections: [
       connect(cloud, firewall, "virtual", 0, 0),

@@ -1,6 +1,7 @@
 import { projectExportSchema, projectSchema } from "@/schemas/network.schema";
 import { ProjectImportError } from "@/lib/errors";
 import { slugify } from "@/lib/utils";
+import { migrateProjectExport } from "@/services/project-migrations";
 import type { NetLabProject, ProjectExport } from "@/types/network";
 
 export const MAX_IMPORT_SIZE = 5 * 1024 * 1024;
@@ -43,7 +44,7 @@ export async function importProjectFile(file: File): Promise<NetLabProject> {
 
   try {
     const parsed: unknown = JSON.parse(await file.text());
-    const exported = projectExportSchema.parse(parsed);
+    const exported = projectExportSchema.parse(migrateProjectExport(parsed));
     return projectSchema.parse({
       ...exported.project,
       devices: exported.devices,

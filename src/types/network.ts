@@ -8,32 +8,90 @@ export const DEVICE_CATEGORIES = [
   "server",
   "storage",
   "end-device",
+  "iot",
   "cloud",
+  "infrastructure",
 ] as const;
 
+export const INTERFACE_TYPES = [
+  "ethernet",
+  "fast-ethernet",
+  "gigabit-ethernet",
+  "2.5-gigabit-ethernet",
+  "5-gigabit-ethernet",
+  "10-gigabit-ethernet",
+  "25-gigabit-ethernet",
+  "40-gigabit-ethernet",
+  "100-gigabit-ethernet",
+  "serial",
+  "console",
+  "aux",
+  "management",
+  "loopback",
+  "tunnel",
+  "vlan",
+  "port-channel",
+  "wireless",
+  "cellular",
+  "dsl",
+  "cable",
+  "fiber",
+  "sfp",
+  "sfp-plus",
+  "qsfp",
+  "qsfp28",
+  "cloud",
+  "storage",
+] as const;
+
+export const CABLE_TYPES = [
+  "copper",
+  "copper-crossover",
+  "fiber-single-mode",
+  "fiber-multi-mode",
+  "serial-dce",
+  "serial-dte",
+  "console",
+  "coaxial",
+  "usb",
+  "wireless",
+  "vpn",
+  "gre",
+  "ipsec",
+  "mpls",
+  "internet",
+  "cellular",
+  "satellite",
+  "virtual",
+  "port-channel",
+  "sd-wan",
+] as const;
+
+export const CURRENT_PROJECT_SCHEMA_VERSION = 2;
+
 export type DeviceCategory = (typeof DEVICE_CATEGORIES)[number];
-export type DeviceStatus = "online" | "offline" | "warning" | "unknown";
-export type InterfaceStatus = "up" | "down" | "administratively-down";
-export type InterfaceType =
-  | "ethernet"
-  | "fast-ethernet"
-  | "gigabit-ethernet"
-  | "10-gigabit-ethernet"
-  | "fiber"
-  | "wireless"
-  | "serial"
-  | "loopback"
-  | "vlan"
-  | "management"
-  | "cloud"
-  | "storage";
-export type CableType = "copper" | "fiber" | "wireless" | "serial" | "virtual";
+export type DeviceStatus =
+  "online" | "offline" | "warning" | "critical" | "configuring" | "validation-failed" | "unknown";
+export type InterfaceStatus =
+  | "administratively-down"
+  | "down"
+  | "negotiating"
+  | "up"
+  | "blocked"
+  | "err-disabled"
+  | "suspended"
+  | "monitoring"
+  | "disabled";
+export type InterfaceType = (typeof INTERFACE_TYPES)[number];
+export type CableType = (typeof CABLE_TYPES)[number];
+export type InterfaceMedium = "copper" | "fiber" | "serial" | "wireless" | "logical" | "management" | "service";
 
 export interface NetworkInterface {
   readonly id: string;
   name: string;
   type: InterfaceType;
   status: InterfaceStatus;
+  medium?: InterfaceMedium;
   macAddress?: string;
   ipv4?: string;
   ipv6?: string;
@@ -41,11 +99,19 @@ export interface NetworkInterface {
   prefixLength?: number;
   defaultGateway?: string;
   vlan?: number;
+  nativeVlan?: number;
+  allowedVlans?: number[];
+  portMode?: "access" | "trunk" | "routed" | "dynamic" | "disabled";
+  poeState?: "off" | "delivering" | "fault";
   speedMbps?: number;
   duplex?: "half" | "full" | "auto";
   mtu: number;
   description?: string;
   connectedEdgeId?: string;
+  errorCount?: number;
+  inputRateMbps?: number;
+  outputRateMbps?: number;
+  packetLossPercent?: number;
 }
 
 export interface NetworkDevice {
@@ -72,12 +138,17 @@ export interface NetworkConnection extends Record<string, unknown> {
   targetDeviceId: string;
   targetInterfaceId?: string;
   cableType: CableType;
-  status: "up" | "down" | "degraded";
+  status: "up" | "down" | "degraded" | "administratively-down";
   bandwidthMbps: number;
   latencyMs: number;
   jitterMs: number;
   packetLossPercent: number;
   duplex: "half" | "full" | "auto";
+  mtu: number;
+  protocol: string;
+  label?: string;
+  direction: "bidirectional" | "source-to-target" | "target-to-source";
+  pathStyle: "physical" | "logical" | "wireless" | "tunnel" | "aggregated";
   createdAt: string;
 }
 
@@ -120,10 +191,7 @@ export interface ProjectExport {
   devices: NetworkDevice[];
   connections: NetworkConnection[];
   groups: TopologyGroup[];
-  settings: {
-    canvas: CanvasSettings;
-    simulation: SimulationSettings;
-  };
+  settings: { canvas: CanvasSettings; simulation: SimulationSettings };
 }
 
 export interface DeviceNodeData extends Record<string, unknown> {
@@ -140,13 +208,35 @@ export interface TopologySnapshot {
 }
 
 export interface DeviceDefinition {
+  readonly id: string;
   readonly type: string;
   readonly category: DeviceCategory;
+  readonly vendor: string;
+  readonly family: string;
+  readonly model: string;
   readonly displayName: string;
+  readonly shortName: string;
   readonly description: string;
   readonly icon: string;
+  readonly diagramSymbol: string;
+  readonly layer: readonly string[];
   readonly defaultInterfaces: ReadonlyArray<Omit<NetworkInterface, "id">>;
+  readonly supportedProtocols: readonly string[];
   readonly defaultConfiguration: Readonly<Record<string, unknown>>;
+  readonly defaultServices: readonly string[];
+  readonly powerState: "on" | "off";
+  readonly formFactor: string;
+  readonly difficultyLevel: "starter" | "beginner" | "intermediate" | "advanced" | "professional";
   readonly capabilities: readonly string[];
+  readonly tags: readonly string[];
+  readonly searchableKeywords: readonly string[];
   readonly inspectorTabs: readonly string[];
+}
+
+export interface DiagramSymbolDefinition {
+  readonly id: string;
+  readonly label: string;
+  readonly description: string;
+  readonly icon: string;
+  readonly category: "device" | "link" | "zone";
 }
