@@ -127,3 +127,28 @@ test("enforces VLAN isolation, learns MAC addresses and validates the VLAN lab",
   await expect(page.getByText("พบ access ports ใน VLAN 10 และ VLAN 20")).toBeVisible();
   expect(errors).toEqual([]);
 });
+
+test("adds a static route and exposes it through the CLI and routing table", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") errors.push(message.text());
+  });
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.goto("/workspace?project=demo-project");
+  const firewallNode = page.locator(".react-flow__node").filter({ hasText: "firewall-" });
+  await firewallNode.dispatchEvent("click");
+  await page.getByRole("tab", { name: "routing" }).click();
+  await page.getByLabel("Route destination").fill("10.20.0.0");
+  await page.getByLabel("Route prefix").fill("16");
+  await page.getByLabel("Route next hop").fill("192.168.1.254");
+  await page.getByRole("button", { name: "Add route" }).click();
+  await expect(page.getByText("S 10.20.0.0/16 via 192.168.1.254")).toBeVisible();
+  await expect(page.getByText("active", { exact: true }).last()).toBeVisible();
+
+  await page.getByRole("tab", { name: "cli" }).click();
+  const command = page.getByRole("textbox", { name: "CLI command", exact: true });
+  await command.fill("show ip route");
+  await command.press("Enter");
+  await expect(page.getByLabel("Educational CLI output")).toContainText("10.20.0.0/16");
+  expect(errors).toEqual([]);
+});

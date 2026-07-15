@@ -11,6 +11,7 @@ export class TopologyLabValidator implements LabValidator {
   async validate(lab: LabDefinition): Promise<readonly LabValidationResult[]> {
     if (lab.id === "vlan") return this.validateVlanLab(lab);
     if (lab.id === "ip-ping") return this.validateIpPingLab(lab);
+    if (lab.id === "inter-vlan") return this.validateInterVlanLab(lab);
     return lab.tasks.map((task) => ({
       taskId: task.id,
       status: "failed",
@@ -80,6 +81,53 @@ export class TopologyLabValidator implements LabValidator {
         message: result?.success
           ? "Ping สำเร็จตาม simulation state"
           : (result?.reason ?? "ยังไม่มีคู่ endpoint สำหรับ Ping"),
+      },
+    ];
+    return lab.tasks.map((task, index) => ({
+      taskId: task.id,
+      status: checks[index]?.passed ? "passed" : "failed",
+      message: checks[index]?.message ?? "ไม่มี validation rule สำหรับ task นี้",
+    }));
+  }
+
+  private validateInterVlanLab(lab: LabDefinition): readonly LabValidationResult[] {
+    const layer3Devices = this.topology.devices.filter((device) => {
+      const routing = this.configurationState.devices[device.id]?.runningConfig.routing;
+      return routing?.ipRouting && Object.keys(routing.svis).length >= 2;
+    });
+    const endpoints = this.topology.devices.filter((device) =>
+      device.interfaces.some(
+        (networkInterface) =>
+          networkInterface.ipv4 && networkInterface.prefixLength !== undefined && networkInterface.defaultGateway,
+      ),
+    );
+    let pingPassed = false;
+    outer: for (const source of endpoints) {
+      for (const destination of endpoints) {
+        if (source.id === destination.id) continue;
+        const destinationInterface = destination.interfaces.find((item) => item.ipv4);
+        if (
+          destinationInterface &&
+          new IPv4PingEngine(this.topology).ping({
+            sourceDeviceId: source.id,
+            destinationIp: destinationInterface.ipv4!,
+          }).success
+        ) {
+          pingPassed = true;
+          break outer;
+        }
+      }
+    }
+    const checks = [
+      {
+        passed: layer3Devices.length > 0,
+        message: layer3Devices.length
+          ? "พบ Layer 3 device ที่เปิด ip routing และมี SVI อย่างน้อย 2 VLAN"
+          : "ต้องเปิด ip routing และสร้าง SVI อย่างน้อย 2 VLAN",
+      },
+      {
+        passed: pingPassed,
+        message: pingPassed ? "Cross-subnet Ping สำเร็จผ่าน routing engine" : "ยัง Ping ข้าม VLAN ไม่สำเร็จ",
       },
     ];
     return lab.tasks.map((task, index) => ({

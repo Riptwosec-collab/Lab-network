@@ -110,11 +110,11 @@ export function BottomPanel() {
             <Info className="text-primary size-4 shrink-0" />
             <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <p className="text-xs font-medium">IPv4 simulation engine</p>
+                <p className="text-xs font-medium">IPv4 & routing engine</p>
                 <Badge variant={dirty ? "warning" : "success"}>{dirty ? "UNSAVED" : "SYNCED"}</Badge>
               </div>
               <p className="text-muted-foreground mt-1 text-[10px]">
-                IPv4, ARP, ICMP และ Layer 2 VLAN forwarding พร้อมใช้งาน · Routing อยู่ใน Phase 4
+                IPv4, ARP, ICMP, VLAN/STP และ static/inter-VLAN routing พร้อมใช้งาน
               </p>
             </div>
           </div>

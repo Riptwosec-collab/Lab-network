@@ -67,7 +67,7 @@ export const CABLE_TYPES = [
   "sd-wan",
 ] as const;
 
-export const CURRENT_PROJECT_SCHEMA_VERSION = 4;
+export const CURRENT_PROJECT_SCHEMA_VERSION = 5;
 
 export type DeviceCategory = (typeof DEVICE_CATEGORIES)[number];
 export type DeviceStatus =
@@ -229,6 +229,29 @@ export interface SwitchingRuntimeConfig {
   etherChannels: Record<string, EtherChannelRuntimeConfig>;
 }
 
+export interface StaticRouteRuntimeConfig {
+  destination: string;
+  prefixLength: number;
+  nextHop: string;
+  administrativeDistance: number;
+  metric: number;
+  name?: string;
+}
+
+export interface SviRuntimeConfig {
+  vlanId: number;
+  enabled: boolean;
+  ipv4: string;
+  prefixLength: number;
+  description?: string;
+}
+
+export interface RoutingRuntimeConfig {
+  ipRouting: boolean;
+  staticRoutes: StaticRouteRuntimeConfig[];
+  svis: Record<string, SviRuntimeConfig>;
+}
+
 export interface DeviceRuntimeConfig {
   system: {
     hostname: string;
@@ -239,7 +262,7 @@ export interface DeviceRuntimeConfig {
   };
   interfaces: Record<string, InterfaceRuntimeConfig>;
   switching?: SwitchingRuntimeConfig;
-  routing: { staticRoutes: Array<{ destination: string; prefixLength: number; nextHop: string }> };
+  routing: RoutingRuntimeConfig;
   services: Record<string, { enabled: boolean; port?: number }>;
 }
 
@@ -288,7 +311,9 @@ export interface ProjectConfigurationState {
       | "INTERFACE_DOWN"
       | "VLAN_CHANGED"
       | "STP_CHANGED"
-      | "ETHERCHANNEL_CHANGED";
+      | "ETHERCHANNEL_CHANGED"
+      | "ROUTE_ADDED"
+      | "ROUTE_REMOVED";
     source: ConfigurationSource;
     message: string;
     revisionId?: string;

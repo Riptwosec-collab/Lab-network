@@ -20,11 +20,20 @@ Engine มี lifecycle (`start`, `pause`, `stop`, `reset`, `step`, `setSpeed`),
 - EtherChannel แสดง state จาก member link และ LACP active/passive negotiation; passive/passive เป็น suspended
 - Lab Validator ตรวจ VLAN 10/20 และ access ports จาก project configuration โดยไม่ใช้ mock result
 
+## IPv4 Routing
+
+- Routing table สร้างจาก connected physical interfaces, SVI และ static/default routes
+- Static route จะ active เมื่อ next-hop อยู่บน connected network เท่านั้น
+- `IPv4RoutingEngine` เลือก route ด้วย longest-prefix match แล้วพิจารณา administrative distance และ metric
+- Cross-subnet Ping ตรวจ Default Gateway, forward route และ return route ทุก hop; route ขาด, next-hop ใช้ไม่ได้, routing loop หรือ `ip routing` ปิดจะคืน failure code จริง
+- Inter-VLAN routing ใช้ SVI ของ Layer 3 switch และ Layer 2 VLAN path เดิม จึงยังถูก access/trunk/STP rules บังคับ
+- Lab Validator ของ Inter-VLAN ตรวจ SVI, `ip routing` และผล Cross-subnet Ping จริง
+
 ## Roadmap ถัดไป
 
 1. deterministic simulation clock และ seeded randomness
 2. device/protocol registries
-3. routing, IPv6, DHCP/DNS, ACL/NAT
+3. IPv6, DHCP/DNS, ACL/NAT
 4. packet animation, performance stats และ replay
 
 Worker รับ INIT/LOAD/PING/START/PAUSE/STOP/STEP/RESET/UPDATE และตอบ READY/TOPOLOGY_LOADED/PING_RESULT/STATE/EVENT/ERROR/STATS ทุก message ต้อง serializable และ versioned ก่อนเปิด protocol plugins ภายนอก

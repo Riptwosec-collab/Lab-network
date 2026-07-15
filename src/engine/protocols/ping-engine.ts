@@ -1,6 +1,7 @@
 import { ArpCache, type ArpEntry } from "@/engine/protocols/arp-cache";
 import { analyzeIPv4, isAddressInSubnet, validateTopologyIPv4 } from "@/engine/protocols/ipv4";
 import { Layer2Engine, type Layer2FailureCode, type Layer2TraceResult } from "@/engine/protocols/layer2-engine";
+import { IPv4RoutingEngine, type RoutingFailureCode, type RoutingTraceResult } from "@/engine/protocols/routing-engine";
 import type { NetworkConnection, NetworkDevice, NetworkInterface, TopologySnapshot } from "@/types/network";
 
 export type PingFailureCode =
@@ -12,9 +13,11 @@ export type PingFailureCode =
   | "DESTINATION_UNREACHABLE"
   | "LINK_DOWN"
   | "ROUTING_NOT_SUPPORTED"
-  | Layer2FailureCode;
+  | Layer2FailureCode
+  | RoutingFailureCode;
 
-export type PingStepKind = "validation" | "layer2" | "arp-request" | "arp-reply" | "icmp-request" | "icmp-reply";
+export type PingStepKind =
+  "validation" | "layer2" | "routing" | "arp-request" | "arp-reply" | "icmp-request" | "icmp-reply";
 
 export interface PingTimelineStep {
   readonly id: string;
@@ -43,6 +46,8 @@ export interface PingResult {
   readonly timeline: readonly PingTimelineStep[];
   readonly arpEntries: readonly ArpEntry[];
   readonly layer2?: Layer2TraceResult;
+  readonly routing?: RoutingTraceResult;
+  readonly returnRouting?: RoutingTraceResult;
 }
 
 interface InterfaceOwner {
@@ -74,6 +79,7 @@ export class IPv4PingEngine {
       source?: InterfaceOwner,
       destination?: InterfaceOwner,
       layer2?: Layer2TraceResult,
+      routing?: RoutingTraceResult,
     ): PingResult => ({
       success: false,
       sourceDeviceId: request.sourceDeviceId,
@@ -86,6 +92,7 @@ export class IPv4PingEngine {
       timeline,
       arpEntries: this.arpCache.list(now),
       layer2,
+      routing,
     });
 
     const sourceDevice = this.topology.devices.find((device) => device.id === request.sourceDeviceId);
@@ -136,7 +143,11 @@ export class IPv4PingEngine {
     );
 
     if (!sameSubnet) {
-      if (!source.networkInterface.defaultGateway) {
+      const routingEngine = new IPv4RoutingEngine(this.topology);
+      const sourceGateway =
+        source.networkInterface.defaultGateway ??
+        (routingEngine.isRoutingEnabled(source.device) ? source.networkInterface.ipv4 : undefined);
+      if (!sourceGateway) {
         step(
           "validation",
           "failure",
@@ -145,13 +156,126 @@ export class IPv4PingEngine {
         );
         return fail("INVALID_GATEWAY", "ต้องกำหนด Default Gateway สำหรับปลายทางต่าง subnet", source, destination);
       }
-      step(
-        "validation",
-        "failure",
-        "Routing deferred",
-        `ส่งต่อผ่าน ${source.networkInterface.defaultGateway} ต้องใช้ routing engine`,
+      if (!destination) {
+        step("routing", "failure", "Destination missing", `ไม่พบ interface ที่ใช้ ${request.destinationIp}`);
+        return fail("DESTINATION_UNREACHABLE", "ไม่พบ Destination ใน topology", source);
+      }
+      if (destination.networkInterface.status !== "up") {
+        step("validation", "failure", "Destination interface down", destination.networkInterface.name);
+        return fail(
+          "INTERFACE_DOWN",
+          `Destination interface ${destination.networkInterface.name} ไม่อยู่ในสถานะ up`,
+          source,
+          destination,
+        );
+      }
+      const routing = routingEngine.trace(source, destination, sourceGateway);
+      if (!routing.success) {
+        step("routing", "failure", routing.failureCode ?? "Routing failed", routing.reason);
+        return fail(
+          routing.failureCode ?? "ROUTE_NOT_FOUND",
+          routing.reason,
+          source,
+          destination,
+          routing.layer2Segments.at(-1),
+          routing,
+        );
+      }
+      const destinationGateway =
+        destination.networkInterface.defaultGateway ??
+        (routingEngine.isRoutingEnabled(destination.device) ? destination.networkInterface.ipv4 : undefined);
+      if (!destinationGateway) {
+        step("routing", "failure", "Return gateway missing", "Destination ไม่มี Default Gateway สำหรับส่ง Echo Reply");
+        return fail(
+          "INVALID_GATEWAY",
+          "Destination ต้องกำหนด Default Gateway สำหรับ return path",
+          source,
+          destination,
+          routing.layer2Segments.at(-1),
+          routing,
+        );
+      }
+      const returnRouting = routingEngine.trace(destination, source, destinationGateway);
+      if (!returnRouting.success) {
+        step("routing", "failure", "Return route failed", returnRouting.reason);
+        return fail(
+          returnRouting.failureCode ?? "ROUTE_NOT_FOUND",
+          `Return path ไม่สำเร็จ: ${returnRouting.reason}`,
+          source,
+          destination,
+          returnRouting.layer2Segments.at(-1),
+          routing,
+        );
+      }
+      const gateway = routingEngine.findInterfaceByIp(sourceGateway);
+      if (gateway) {
+        const gatewayMac = gateway.networkInterface.macAddress ?? deriveMacAddress(gateway.networkInterface.id);
+        this.arpCache.set(source.device.id, sourceGateway, gatewayMac, "dynamic", now);
+        step("arp-request", "info", "ARP Request", `Who has ${sourceGateway}?`);
+        step("arp-reply", "success", "Default Gateway ARP Reply", `${sourceGateway} is-at ${gatewayMac}`);
+      }
+      routing.hops.forEach((hop) =>
+        step(
+          "routing",
+          "success",
+          `${hop.hostname}: ${hop.route.source.toUpperCase()} ${hop.route.destination}/${hop.route.prefixLength}`,
+          hop.route.nextHop ? `via ${hop.route.nextHop}` : `directly connected ${hop.route.outgoingInterfaceId}`,
+        ),
       );
-      return fail("ROUTING_NOT_SUPPORTED", "Ping ข้าม subnet จะรองรับใน Phase 4", source, destination);
+      returnRouting.hops.forEach((hop) =>
+        step(
+          "routing",
+          "success",
+          `Return ${hop.hostname}: ${hop.route.destination}/${hop.route.prefixLength}`,
+          hop.route.nextHop ? `via ${hop.route.nextHop}` : `directly connected ${hop.route.outgoingInterfaceId}`,
+        ),
+      );
+      step("icmp-request", "info", "ICMP Echo Request", `${sourceInfo.address} → ${request.destinationIp}`);
+      const routedConnections = [...routing.layer2Segments, ...returnRouting.layer2Segments].flatMap((segment) =>
+        segment.connectionIds.flatMap((connectionId) => {
+          const connection = this.topology.connections.find((item) => item.id === connectionId);
+          return connection ? [connection] : [];
+        }),
+      );
+      if (routedConnections.some((connection) => connection.packetLossPercent >= 100)) {
+        step("icmp-reply", "failure", "ICMP timeout", "Packet loss ของ routed path เท่ากับ 100%");
+        return fail(
+          "DESTINATION_UNREACHABLE",
+          "ICMP Echo Request สูญหายระหว่าง routed path",
+          source,
+          destination,
+          routing.layer2Segments.at(-1),
+          routing,
+        );
+      }
+      const latencyMs = Math.max(
+        1,
+        routedConnections.reduce(
+          (total, connection) => total + connection.latencyMs * 2 + connection.jitterMs,
+          routing.hops.length,
+        ),
+      );
+      step(
+        "icmp-reply",
+        "success",
+        "ICMP Echo Reply",
+        `${request.destinationIp} → ${sourceInfo.address} · ${latencyMs.toFixed(1)} ms`,
+      );
+      return {
+        success: true,
+        sourceDeviceId: source.device.id,
+        sourceInterfaceId: source.networkInterface.id,
+        destinationDeviceId: destination.device.id,
+        destinationInterfaceId: destination.networkInterface.id,
+        destinationIp: request.destinationIp,
+        latencyMs,
+        reason: routing.reason,
+        timeline,
+        arpEntries: this.arpCache.list(now),
+        layer2: routing.layer2Segments.at(-1),
+        routing,
+        returnRouting,
+      };
     }
 
     const cached = this.arpCache.get(source.device.id, request.destinationIp, now);

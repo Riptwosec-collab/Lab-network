@@ -58,6 +58,13 @@ export function applyDeviceConfiguration(
       JSON.stringify(candidate.switching?.etherChannels)
     )
       appendAudit(deviceId, "ETHERCHANNEL_CHANGED", source, `Updated EtherChannel on ${nextDevice.hostname}`);
+    if (JSON.stringify(currentState.runningConfig.routing) !== JSON.stringify(candidate.routing)) {
+      const eventType =
+        candidate.routing.staticRoutes.length >= currentState.runningConfig.routing.staticRoutes.length
+          ? "ROUTE_ADDED"
+          : "ROUTE_REMOVED";
+      appendAudit(deviceId, eventType, source, `Updated routing table on ${nextDevice.hostname}`);
+    }
   } else {
     appendAudit(deviceId, "CONFIG_CHANGED", source, "Configuration validation failed");
   }
@@ -175,7 +182,9 @@ function appendAudit(
     | "CONFIG_ROLLBACK"
     | "VLAN_CHANGED"
     | "STP_CHANGED"
-    | "ETHERCHANNEL_CHANGED",
+    | "ETHERCHANNEL_CHANGED"
+    | "ROUTE_ADDED"
+    | "ROUTE_REMOVED",
   source: ConfigurationSource,
   message: string,
   revisionId?: string,

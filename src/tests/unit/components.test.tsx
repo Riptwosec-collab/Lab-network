@@ -36,7 +36,8 @@ describe("workspace components", () => {
     expect(screen.getByTestId("network-canvas")).toBeInTheDocument();
   });
 
-  it("renders registry-driven inspector tabs for a selected device", () => {
+  it("renders real configuration tabs for a selected device", async () => {
+    const user = userEvent.setup();
     const project = createDemoProject();
     const device = project.devices.find((item) => item.type === "firewall")!;
     useTopologyStore
@@ -51,5 +52,7 @@ describe("workspace components", () => {
     expect(screen.getByRole("tab", { name: "raw-config" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "history" })).toBeInTheDocument();
     expect(screen.getByDisplayValue(device.hostname)).toBeInTheDocument();
+    await user.click(screen.getByRole("tab", { name: "routing" }));
+    expect(screen.getByText("Static / default route")).toBeInTheDocument();
   });
 });

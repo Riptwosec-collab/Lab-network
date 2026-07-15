@@ -93,6 +93,24 @@ export class NetLabDatabase extends Dexie {
           .toCollection()
           .modify((version) => Object.assign(version, { data: migrateProject(version.data) }));
       });
+    this.version(5)
+      .stores({
+        projects: "id, updatedAt, name",
+        projectVersions: "id, projectId, createdAt",
+        settings: "key, updatedAt",
+        learningProgress: "id, updatedAt",
+        labProgress: "id, updatedAt",
+      })
+      .upgrade(async (transaction) => {
+        await transaction
+          .table("projects")
+          .toCollection()
+          .modify((project) => Object.assign(project, migrateProject(project)));
+        await transaction
+          .table("projectVersions")
+          .toCollection()
+          .modify((version) => Object.assign(version, { data: migrateProject(version.data) }));
+      });
   }
 }
 

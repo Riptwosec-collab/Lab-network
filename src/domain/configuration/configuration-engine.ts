@@ -16,6 +16,11 @@ const cleanValidation = (): ConfigurationValidationResult => ({ valid: true, iss
 
 export function createDeviceRuntimeConfig(device: NetworkDevice): DeviceRuntimeConfig {
   const supportsSwitching = device.category === "switch" || device.capabilities.includes("switching");
+  const supportsRouting =
+    device.category === "router" ||
+    device.category === "security" ||
+    device.capabilities.includes("routing") ||
+    device.capabilities.includes("svi");
   return {
     system: {
       hostname: device.hostname,
@@ -61,7 +66,7 @@ export function createDeviceRuntimeConfig(device: NetworkDevice): DeviceRuntimeC
           etherChannels: {},
         }
       : undefined,
-    routing: { staticRoutes: [] },
+    routing: { ipRouting: supportsRouting, staticRoutes: [], svis: {} },
     services: {},
   };
 }
@@ -129,6 +134,16 @@ function normalizeDeviceConfigurationState(
           etherChannels: { ...defaults.switching.etherChannels, ...config.switching?.etherChannels },
         }
       : config.switching,
+    routing: {
+      ...defaults.routing,
+      ...config.routing,
+      staticRoutes: (config.routing?.staticRoutes ?? []).map((route) => ({
+        ...route,
+        administrativeDistance: route.administrativeDistance ?? 1,
+        metric: route.metric ?? 0,
+      })),
+      svis: { ...defaults.routing.svis, ...config.routing?.svis },
+    },
   });
   return {
     ...current,
@@ -219,6 +234,47 @@ export function validateRuntimeConfig(
           });
       }
     }
+  }
+  const supportsRouting =
+    device.category === "router" ||
+    device.category === "security" ||
+    device.capabilities.includes("routing") ||
+    device.capabilities.includes("svi");
+  if (
+    !supportsRouting &&
+    (config.routing.ipRouting || config.routing.staticRoutes.length || Object.keys(config.routing.svis).length)
+  )
+    issues.push({ path: "routing", message: "อุปกรณ์นี้ไม่รองรับ IP routing" });
+  const routeKeys = new Set<string>();
+  for (const [index, route] of config.routing.staticRoutes.entries()) {
+    const path = `routing.staticRoutes.${index}`;
+    const analysis = analyzeIPv4(route.destination, route.prefixLength);
+    if (!analysis || analysis.networkAddress !== route.destination)
+      issues.push({ path: `${path}.destination`, message: "Route destination ต้องเป็น network address ที่ถูกต้อง" });
+    if (ipv4ToInteger(route.nextHop) === undefined)
+      issues.push({ path: `${path}.nextHop`, message: "Static route next-hop ไม่ใช่ IPv4 ที่ถูกต้อง" });
+    if (
+      !Number.isInteger(route.administrativeDistance) ||
+      route.administrativeDistance < 1 ||
+      route.administrativeDistance > 255
+    )
+      issues.push({ path: `${path}.administrativeDistance`, message: "Administrative distance ต้องอยู่ระหว่าง 1–255" });
+    if (!Number.isInteger(route.metric) || route.metric < 0)
+      issues.push({ path: `${path}.metric`, message: "Route metric ต้องเป็นจำนวนเต็มตั้งแต่ 0 ขึ้นไป" });
+    const key = `${route.destination}/${route.prefixLength}`;
+    if (routeKeys.has(key)) issues.push({ path, message: `มี route ${key} ซ้ำใน configuration` });
+    routeKeys.add(key);
+  }
+  const sviAddresses = new Set<string>();
+  for (const [vlanKey, svi] of Object.entries(config.routing.svis)) {
+    const path = `routing.svis.${vlanKey}`;
+    if (!config.switching?.vlans[String(svi.vlanId)])
+      issues.push({ path: `${path}.vlanId`, message: `VLAN ${svi.vlanId} ไม่มีใน VLAN database` });
+    const analysis = analyzeIPv4(svi.ipv4, svi.prefixLength);
+    if (!analysis?.isUsableHost)
+      issues.push({ path: `${path}.ipv4`, message: "SVI IPv4 ต้องเป็น usable host address" });
+    if (sviAddresses.has(svi.ipv4)) issues.push({ path: `${path}.ipv4`, message: "SVI IPv4 ซ้ำในอุปกรณ์" });
+    sviAddresses.add(svi.ipv4);
   }
   return { valid: issues.length === 0, issues };
 }
@@ -356,6 +412,7 @@ export function diffConfiguration(before: DeviceRuntimeConfig, after: DeviceRunt
   }
   if (JSON.stringify(before.switching) !== JSON.stringify(after.switching))
     changes.push("switching configuration modified");
+  if (JSON.stringify(before.routing) !== JSON.stringify(after.routing)) changes.push("routing configuration modified");
   return changes.length ? changes : ["No effective configuration changes"];
 }
 
@@ -371,6 +428,14 @@ export function renderRunningConfig(config: DeviceRuntimeConfig, device: Network
     lines.push(
       `spanning-tree vlan ${config.switching.spanningTree.enabledVlans.join(",")} priority ${config.switching.spanningTree.priority}`,
     );
+  }
+  if (config.routing.ipRouting) lines.push("!", "ip routing");
+  for (const svi of Object.values(config.routing.svis).sort((left, right) => left.vlanId - right.vlanId)) {
+    lines.push("!", `interface Vlan${svi.vlanId}`, ` ip address ${svi.ipv4}/${svi.prefixLength}`);
+    lines.push(svi.enabled ? " no shutdown" : " shutdown");
+  }
+  for (const route of config.routing.staticRoutes) {
+    lines.push(`ip route ${route.destination}/${route.prefixLength} ${route.nextHop} ${route.administrativeDistance}`);
   }
   for (const networkInterface of device.interfaces) {
     const item = config.interfaces[networkInterface.id];

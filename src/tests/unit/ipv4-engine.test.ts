@@ -127,7 +127,7 @@ describe("same-subnet ping engine", () => {
     expect(result.timeline.at(-1)?.label).toBe("ARP timeout");
   });
 
-  it("defers cross-subnet forwarding until the routing phase", () => {
+  it("reports a missing route for an unknown remote subnet", () => {
     nas.interfaces[0] = {
       ...nas.interfaces[0]!,
       ipv4: "10.0.0.10",
@@ -136,6 +136,6 @@ describe("same-subnet ping engine", () => {
       defaultGateway: "10.0.0.1",
     };
     const result = new IPv4PingEngine(project).ping({ sourceDeviceId: pc.id, destinationIp: "10.0.0.10" });
-    expect(result).toMatchObject({ success: false, failureCode: "ROUTING_NOT_SUPPORTED" });
+    expect(result).toMatchObject({ success: false, failureCode: "ROUTE_NOT_FOUND" });
   });
 });

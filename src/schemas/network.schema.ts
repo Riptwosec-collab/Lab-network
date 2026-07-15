@@ -159,9 +159,29 @@ export const deviceRuntimeConfigSchema = z.object({
   interfaces: z.record(z.string(), interfaceRuntimeConfigSchema),
   switching: switchingRuntimeConfigSchema.optional(),
   routing: z.object({
+    ipRouting: z.boolean().default(false),
     staticRoutes: z.array(
-      z.object({ destination: z.string(), prefixLength: z.number().int().min(0).max(32), nextHop: z.string() }),
+      z.object({
+        destination: z.string(),
+        prefixLength: z.number().int().min(0).max(32),
+        nextHop: z.string(),
+        administrativeDistance: z.number().int().min(1).max(255).default(1),
+        metric: z.number().int().nonnegative().default(0),
+        name: z.string().max(64).optional(),
+      }),
     ),
+    svis: z
+      .record(
+        z.string(),
+        z.object({
+          vlanId: z.number().int().min(1).max(4094),
+          enabled: z.boolean(),
+          ipv4: z.string(),
+          prefixLength: z.number().int().min(0).max(32),
+          description: z.string().max(240).optional(),
+        }),
+      )
+      .default({}),
   }),
   services: z.record(
     z.string(),
@@ -216,6 +236,8 @@ export const projectConfigurationStateSchema = z.object({
         "VLAN_CHANGED",
         "STP_CHANGED",
         "ETHERCHANNEL_CHANGED",
+        "ROUTE_ADDED",
+        "ROUTE_REMOVED",
       ]),
       source: z.enum(["form", "cli", "raw", "import", "template", "lab-solution", "system"]),
       message: z.string(),

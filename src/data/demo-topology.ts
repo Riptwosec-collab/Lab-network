@@ -1,7 +1,7 @@
 import { nanoid } from "nanoid";
 
 import { deviceRegistry } from "@/data/device-catalog";
-import { createProjectConfigurationState } from "@/domain/configuration/configuration-engine";
+import { applyRuntimeConfig, createProjectConfigurationState } from "@/domain/configuration/configuration-engine";
 import {
   CURRENT_PROJECT_SCHEMA_VERSION,
   type NetLabProject,
@@ -95,6 +95,18 @@ export function createDemoProject(): NetLabProject {
   devices.forEach((device) => {
     device.status = "online";
   });
+  const connections = [
+    connect(cloud, firewall, "virtual", 0, 0),
+    connect(firewall, networkSwitch, "copper", 1, 0),
+    connect(networkSwitch, pc, "copper", 1, 0),
+    connect(networkSwitch, ap, "copper", 2, 0),
+    connect(networkSwitch, nas, "copper", 3, 0),
+    connect(ap, laptop, "wireless", 1, 0),
+  ];
+  const configurationState = createProjectConfigurationState(devices);
+  const configuredDevices = devices.map((device) =>
+    applyRuntimeConfig(device, configurationState.devices[device.id]!.runningConfig),
+  );
 
   return {
     id: "demo-project",
@@ -102,19 +114,12 @@ export function createDemoProject(): NetLabProject {
     description: "Topology ตัวอย่าง Internet, Firewall, Switching, Wi-Fi และ NAS",
     version: "0.1.0",
     schemaVersion: CURRENT_PROJECT_SCHEMA_VERSION,
-    devices,
-    connections: [
-      connect(cloud, firewall, "virtual", 0, 0),
-      connect(firewall, networkSwitch, "copper", 1, 0),
-      connect(networkSwitch, pc, "copper", 1, 0),
-      connect(networkSwitch, ap, "copper", 2, 0),
-      connect(networkSwitch, nas, "copper", 3, 0),
-      connect(ap, laptop, "wireless", 1, 0),
-    ],
+    devices: configuredDevices,
+    connections,
     groups: [],
     canvasSettings: { snapToGrid: true, showGrid: true, zoom: 0.85 },
     simulationSettings: { speed: 1, autoStart: false },
-    configurationState: createProjectConfigurationState(devices),
+    configurationState,
     createdAt: now,
     updatedAt: now,
   };

@@ -277,6 +277,14 @@ export class Layer2Engine {
     while (queue.length) {
       const current = queue.shift()!;
       const deviceId = current.deviceIds.at(-1)!;
+      const currentDevice = this.device(deviceId);
+      if (
+        deviceId !== sourceDeviceId &&
+        deviceId !== destinationDeviceId &&
+        currentDevice &&
+        !this.isSwitch(currentDevice)
+      )
+        continue;
       for (const connection of this.topology.connections) {
         const nextDeviceId = this.otherDevice(connection, deviceId);
         if (!nextDeviceId || visited.has(nextDeviceId)) continue;
@@ -360,6 +368,7 @@ export class Layer2Engine {
   }
 
   private resolveEndpointVlan(owner: InterfaceOwner): number {
+    if (owner.networkInterface.type === "vlan" && owner.networkInterface.vlan) return owner.networkInterface.vlan;
     const direct = this.isSwitch(owner.device)
       ? this.switchport(owner.device, owner.networkInterface).accessVlan
       : owner.networkInterface.vlan;

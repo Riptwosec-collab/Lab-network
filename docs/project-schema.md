@@ -4,7 +4,7 @@ Project ใช้ `schemaVersion` สำหรับ migration ของ persist
 
 ```json
 {
-  "schemaVersion": 4,
+  "schemaVersion": 5,
   "project": { "id": "...", "name": "...", "canvasSettings": {}, "simulationSettings": {} },
   "devices": [],
   "connections": [],
@@ -34,5 +34,7 @@ Schema v2 เพิ่ม metadata ของ cable (`mtu`, `protocol`, `directio
 Schema v3 เพิ่ม `configurationState` ซึ่งเก็บ running/startup configuration, ผล validation, revision history และ audit log แยกตามอุปกรณ์ โดย migration จะสร้างค่าเริ่มต้นจาก hostname/interface configuration เดิมเพื่อไม่ให้ข้อมูล v1/v2 สูญหาย `src/services/project-migrations.ts` ทำ migration แบบ pure function ก่อน Zod validation และ Dexie v3 อัปเดตทั้ง projects กับ projectVersions ในที่เดิม
 
 Schema v4 เพิ่ม switching runtime config: VLAN database, switchport access/trunk/native/allowed VLAN, STP, static MAC และ EtherChannel/LACP Migration เติม VLAN 1 กับ switchport defaults ให้ switch จากโปรเจกต์ v1–v3 และ Dexie v4 อัปเดตทั้ง project snapshots กับ version history โดยคง topology เดิม
+
+Schema v5 เพิ่ม `ipRouting`, static/default routes พร้อม administrative distance/metric และ SVI configuration Migration เติม routing defaults ให้ revision และ project จาก v1–v4 ส่วน Dexie v5 อัปเดต project กับ version snapshots โดยไม่ลบข้อมูลเดิม
 
 เมื่อเพิ่ม schema version ให้เพิ่ม migration แบบ pure function จาก N ไป N+1 และเก็บ fixture ของเวอร์ชันเดิมไว้ทดสอบ ห้าม mutate raw data ระหว่าง migration

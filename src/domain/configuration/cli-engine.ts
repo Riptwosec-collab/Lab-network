@@ -1,5 +1,6 @@
 import { ipv4ToInteger } from "@/engine/protocols/ipv4";
 import { Layer2Engine, type MacAddressEntry } from "@/engine/protocols/layer2-engine";
+import { IPv4RoutingEngine } from "@/engine/protocols/routing-engine";
 import { renderRunningConfig } from "@/domain/configuration/configuration-engine";
 import type { DeviceConfigurationState, DeviceRuntimeConfig, NetworkDevice, TopologySnapshot } from "@/types/network";
 
@@ -9,6 +10,7 @@ export interface CliContext {
   readonly mode: CliMode;
   readonly interfaceId?: string;
   readonly vlanId?: number;
+  readonly sviVlanId?: number;
 }
 
 export interface CliCommandResult {
@@ -158,6 +160,26 @@ const commandRegistry: readonly CommandDefinition[] = [
         }),
       ],
     }),
+  },
+  {
+    id: "show-ip-route",
+    modes: ["privileged", "user"],
+    usage: "show ip route",
+    matches: exact(["show", "ip", "route"]),
+    execute: ({ context, device, topology }) => {
+      if (!topology) return { context, output: ["% Topology state is not available"] };
+      const routes = new IPv4RoutingEngine(topology).buildRoutingTable(device);
+      return {
+        context,
+        output: [
+          "Codes: C - connected, S - static, S* - default",
+          ...routes.map((route) => {
+            const code = route.source === "connected" ? "C" : route.source === "default" ? "S*" : "S";
+            return `${code.padEnd(3)} ${route.destination}/${route.prefixLength}${route.nextHop ? ` [${route.administrativeDistance}/${route.metric}] via ${route.nextHop}` : ` is directly connected, ${route.outgoingInterfaceId}`}${route.active ? "" : " (unresolved)"}`;
+          }),
+        ],
+      };
+    },
   },
   {
     id: "show-vlan-brief",
@@ -364,12 +386,92 @@ const commandRegistry: readonly CommandDefinition[] = [
     },
   },
   {
+    id: "ip-routing",
+    modes: ["global-config"],
+    usage: "ip routing",
+    matches: exact(["ip", "routing"]),
+    execute: ({ context, state }) => {
+      const nextConfig = cloneRunning(state);
+      nextConfig.routing.ipRouting = true;
+      return { context, output: [], nextConfig, action: "apply" };
+    },
+  },
+  {
+    id: "no-ip-routing",
+    modes: ["global-config"],
+    usage: "no ip routing",
+    matches: exact(["no", "ip", "routing"]),
+    execute: ({ context, state }) => {
+      const nextConfig = cloneRunning(state);
+      nextConfig.routing.ipRouting = false;
+      return { context, output: [], nextConfig, action: "apply" };
+    },
+  },
+  {
+    id: "ip-route",
+    modes: ["global-config"],
+    usage: "ip route <network> <mask|prefix> <next-hop> [distance]",
+    matches: starts(["ip", "route"]),
+    execute: ({ tokens, context, state }) => {
+      const destination = tokens[2];
+      const prefixLength = prefixFrom(tokens[3]);
+      const nextHop = tokens[4];
+      const administrativeDistance = tokens[5] ? Number(tokens[5]) : 1;
+      if (
+        !destination ||
+        ipv4ToInteger(destination) === undefined ||
+        prefixLength === undefined ||
+        !nextHop ||
+        ipv4ToInteger(nextHop) === undefined ||
+        !Number.isInteger(administrativeDistance) ||
+        administrativeDistance < 1 ||
+        administrativeDistance > 255
+      )
+        return { context, output: ["% Usage: ip route <network> <mask|prefix> <next-hop> [1-255]"] };
+      const nextConfig = cloneRunning(state);
+      nextConfig.routing.staticRoutes.push({
+        destination,
+        prefixLength,
+        nextHop,
+        administrativeDistance,
+        metric: 0,
+      });
+      return { context, output: [], nextConfig, action: "apply" };
+    },
+  },
+  {
+    id: "no-ip-route",
+    modes: ["global-config"],
+    usage: "no ip route <network> <mask|prefix> <next-hop>",
+    matches: starts(["no", "ip", "route"]),
+    execute: ({ tokens, context, state }) => {
+      const destination = tokens[3];
+      const prefixLength = prefixFrom(tokens[4]);
+      const nextHop = tokens[5];
+      const nextConfig = cloneRunning(state);
+      const index = nextConfig.routing.staticRoutes.findIndex(
+        (route) =>
+          route.destination === destination && route.prefixLength === prefixLength && route.nextHop === nextHop,
+      );
+      if (index < 0) return { context, output: ["% Static route not found"] };
+      nextConfig.routing.staticRoutes.splice(index, 1);
+      return { context, output: [], nextConfig, action: "apply" };
+    },
+  },
+  {
     id: "interface",
     modes: ["global-config"],
     usage: "interface <name>",
     matches: starts(["interface"]),
-    execute: ({ tokens, context, device }) => {
+    execute: ({ tokens, context, device, state }) => {
       const name = tokens.slice(1).join(" ");
+      const sviMatch = /^vlan\s*(\d+)$/i.exec(name);
+      if (sviMatch) {
+        const vlanId = Number(sviMatch[1]);
+        return state.runningConfig.switching?.vlans[String(vlanId)]
+          ? { context: { mode: "interface-config", sviVlanId: vlanId }, output: [] }
+          : { context, output: [`% VLAN ${vlanId} does not exist`] };
+      }
       const networkInterface = device.interfaces.find((item) => item.name.toLowerCase() === name.toLowerCase());
       return networkInterface
         ? { context: { mode: "interface-config", interfaceId: networkInterface.id }, output: [] }
@@ -426,14 +528,20 @@ const commandRegistry: readonly CommandDefinition[] = [
     modes: ["interface-config"],
     usage: "shutdown",
     matches: exact(["shutdown"]),
-    execute: ({ context, state }) => updateInterface(context, state, (item) => ({ ...item, enabled: false })),
+    execute: ({ context, state }) =>
+      context.sviVlanId
+        ? updateSvi(context, state, (svi) => ({ ...svi, enabled: false }))
+        : updateInterface(context, state, (item) => ({ ...item, enabled: false })),
   },
   {
     id: "no-shutdown",
     modes: ["interface-config"],
     usage: "no shutdown",
     matches: exact(["no", "shutdown"]),
-    execute: ({ context, state }) => updateInterface(context, state, (item) => ({ ...item, enabled: true })),
+    execute: ({ context, state }) =>
+      context.sviVlanId
+        ? updateSvi(context, state, (svi) => ({ ...svi, enabled: true }))
+        : updateInterface(context, state, (item) => ({ ...item, enabled: true })),
   },
   {
     id: "ip-address",
@@ -445,6 +553,15 @@ const commandRegistry: readonly CommandDefinition[] = [
       const prefixLength = prefixFrom(tokens[3]);
       if (!address || ipv4ToInteger(address) === undefined || prefixLength === undefined)
         return { context, output: ["% Usage: ip address <valid-address> <valid-mask-or-prefix>"] };
+      if (context.sviVlanId) {
+        const current = state.runningConfig.routing.svis[String(context.sviVlanId)];
+        return updateSvi(context, state, (svi) => ({
+          ...svi,
+          enabled: current?.enabled ?? true,
+          ipv4: address,
+          prefixLength,
+        }));
+      }
       return updateInterface(context, state, (item) => ({ ...item, ipv4: address, prefixLength }));
     },
   },
@@ -453,13 +570,19 @@ const commandRegistry: readonly CommandDefinition[] = [
     modes: ["interface-config"],
     usage: "no ip address",
     matches: exact(["no", "ip", "address"]),
-    execute: ({ context, state }) =>
-      updateInterface(context, state, (item) => ({
+    execute: ({ context, state }) => {
+      if (context.sviVlanId) {
+        const nextConfig = cloneRunning(state);
+        delete nextConfig.routing.svis[String(context.sviVlanId)];
+        return { context, output: [], nextConfig, action: "apply" };
+      }
+      return updateInterface(context, state, (item) => ({
         ...item,
         ipv4: undefined,
         prefixLength: undefined,
         defaultGateway: undefined,
-      })),
+      }));
+    },
   },
   {
     id: "switchport-mode",
@@ -594,6 +717,23 @@ function updateSwitchport(
   if (!current?.switchport) return { context, output: ["% Interface is not a switchport"] };
   const nextConfig = cloneRunning(state);
   nextConfig.interfaces[context.interfaceId]!.switchport = update(current.switchport);
+  return { context, output: [], nextConfig, action: "apply" };
+}
+
+function updateSvi(
+  context: CliContext,
+  state: DeviceConfigurationState,
+  update: (svi: DeviceRuntimeConfig["routing"]["svis"][string]) => DeviceRuntimeConfig["routing"]["svis"][string],
+): CliCommandResult {
+  if (!context.sviVlanId) return { context, output: ["% SVI context is missing"] };
+  const current = state.runningConfig.routing.svis[String(context.sviVlanId)] ?? {
+    vlanId: context.sviVlanId,
+    enabled: true,
+    ipv4: "0.0.0.0",
+    prefixLength: 0,
+  };
+  const nextConfig = cloneRunning(state);
+  nextConfig.routing.svis[String(context.sviVlanId)] = update(current);
   return { context, output: [], nextConfig, action: "apply" };
 }
 

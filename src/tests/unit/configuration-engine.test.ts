@@ -8,6 +8,7 @@ import {
   saveStartupConfig,
 } from "@/domain/configuration/configuration-engine";
 import { createDemoProject } from "@/data/demo-topology";
+import { deviceRegistry } from "@/data/device-catalog";
 import { IPv4PingEngine } from "@/engine/protocols/ping-engine";
 import { applyDeviceConfiguration } from "@/services/configuration-service";
 import { useConfigurationStore } from "@/stores/configuration-store";
@@ -118,6 +119,45 @@ describe("structured CLI engine", () => {
     const access = executeCliCommand("switchport access vlan 10", context, device, state);
     expect(access.nextConfig?.switching?.vlans["10"]?.name).toBe("USERS");
     expect(access.nextConfig?.interfaces[device.interfaces[0]!.id]?.switchport?.accessVlan).toBe(10);
+  });
+
+  it("adds a static default route and configures an SVI", () => {
+    const router = createDemoProject().devices.find((item) => item.category === "security")!;
+    const routerState = createDeviceConfigurationState(router);
+    const defaultRoute = executeCliCommand(
+      "ip route 0.0.0.0 0 192.168.1.254",
+      { mode: "global-config" },
+      router,
+      routerState,
+    );
+    expect(defaultRoute.nextConfig?.routing.staticRoutes[0]).toMatchObject({
+      destination: "0.0.0.0",
+      prefixLength: 0,
+      nextHop: "192.168.1.254",
+    });
+
+    let layer3Switch = deviceRegistry.create("layer-3-switch");
+    let switchState = createDeviceConfigurationState(layer3Switch);
+    const vlan = executeCliCommand("vlan 10", { mode: "global-config" }, layer3Switch, switchState);
+    ({ nextDevice: layer3Switch, nextState: switchState } = applyConfiguration(
+      switchState,
+      layer3Switch,
+      vlan.nextConfig!,
+      "cli",
+    ));
+    const sviContext = executeCliCommand(
+      "interface vlan 10",
+      { mode: "global-config" },
+      layer3Switch,
+      switchState,
+    ).context;
+    const svi = executeCliCommand("ip address 10.10.10.1 255.255.255.0", sviContext, layer3Switch, switchState);
+    expect(svi.nextConfig?.routing.svis["10"]).toMatchObject({
+      vlanId: 10,
+      ipv4: "10.10.10.1",
+      prefixLength: 24,
+      enabled: true,
+    });
   });
 });
 

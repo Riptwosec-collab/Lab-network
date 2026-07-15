@@ -1,7 +1,7 @@
 import { nanoid } from "nanoid";
 import { create } from "zustand";
 
-import { createDeviceConfigurationState } from "@/domain/configuration/configuration-engine";
+import { applyRuntimeConfig, createDeviceConfigurationState } from "@/domain/configuration/configuration-engine";
 import { canUseCable, isInterfaceAvailable } from "@/domain/interfaces/port-compatibility";
 import { connectionSchema, deviceSchema } from "@/schemas/network.schema";
 import { useConfigurationStore } from "@/stores/configuration-store";
@@ -42,14 +42,16 @@ export const useTopologyStore = create<TopologyState>((set, get) => ({
   selectedDeviceId: undefined,
   selectedConnectionId: undefined,
   addDevice: (input) => {
-    const device = deviceSchema.parse(input);
+    const parsedDevice = deviceSchema.parse(input);
+    const deviceState = createDeviceConfigurationState(parsedDevice);
+    const device = deviceSchema.parse(applyRuntimeConfig(parsedDevice, deviceState.runningConfig));
     useHistoryStore.getState().record(snapshotFrom(get()));
     set((state) => ({
       devices: [...state.devices, device],
       selectedDeviceId: device.id,
       selectedConnectionId: undefined,
     }));
-    useConfigurationStore.getState().replaceDeviceState(createDeviceConfigurationState(device));
+    useConfigurationStore.getState().replaceDeviceState(deviceState);
   },
   updateDevice: (deviceId, updates, recordHistory = true) => {
     if (recordHistory) useHistoryStore.getState().record(snapshotFrom(get()));

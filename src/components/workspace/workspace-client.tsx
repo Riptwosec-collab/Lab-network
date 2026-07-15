@@ -8,6 +8,7 @@ import { DeviceLibrary } from "@/components/devices/device-library";
 import { DeviceInspector } from "@/components/inspector/device-inspector";
 import { BottomPanel } from "@/components/layout/bottom-panel";
 import { WorkspaceToolbar } from "@/components/layout/workspace-toolbar";
+import { applyRuntimeConfig, createDeviceRuntimeConfig } from "@/domain/configuration/configuration-engine";
 import { useAutosave } from "@/hooks/use-autosave";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { useProjectStore } from "@/stores/project-store";
@@ -46,7 +47,16 @@ export function WorkspaceClient() {
         useProjectStore.getState().setCurrentProject(project);
         useConfigurationStore.getState().hydrate(project.configurationState, project.devices);
         useLayer2Store.getState().reset();
-        replaceTopology({ devices: project.devices, connections: project.connections, groups: project.groups });
+        replaceTopology({
+          devices: project.devices.map((device) =>
+            applyRuntimeConfig(
+              device,
+              project.configurationState.devices[device.id]?.runningConfig ?? createDeviceRuntimeConfig(device),
+            ),
+          ),
+          connections: project.connections,
+          groups: project.groups,
+        });
       }
       setReady(true);
     };

@@ -42,10 +42,11 @@ describe("device foundation", () => {
       }),
     };
     const migrated = projectSchema.parse(migrateProject(legacy));
-    expect(migrated.schemaVersion).toBe(4);
+    expect(migrated.schemaVersion).toBe(5);
     expect(Object.keys(migrated.configurationState.devices)).toHaveLength(demo.devices.length);
     const migratedSwitch = migrated.devices.find((device) => device.category === "switch")!;
     expect(migrated.configurationState.devices[migratedSwitch.id]?.runningConfig.switching?.vlans["1"]).toBeDefined();
+    expect(migrated.configurationState.devices[migratedSwitch.id]?.runningConfig.routing.svis).toEqual({});
     expect(migrated.devices).toHaveLength(demo.devices.length);
     expect(migrated.connections[0]).toMatchObject({ mtu: 1500, protocol: "ethernet", direction: "bidirectional" });
   });
