@@ -1,7 +1,10 @@
+import { createProjectConfigurationState } from "@/domain/configuration/configuration-engine";
 import {
   CURRENT_PROJECT_SCHEMA_VERSION,
   DEVICE_CATEGORIES,
   type NetLabProject,
+  type NetworkDevice,
+  type ProjectConfigurationState,
   type ProjectExport,
 } from "@/types/network";
 
@@ -52,6 +55,12 @@ export function migrateProject(input: unknown): NetLabProject {
       };
     }),
     connections: connections.map(migrateConnection),
+    configurationState: createProjectConfigurationState(
+      devices as NetworkDevice[],
+      isRecord(input.configurationState)
+        ? (input.configurationState as unknown as ProjectConfigurationState)
+        : undefined,
+    ),
   };
   return migrated as NetLabProject;
 }

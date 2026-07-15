@@ -24,7 +24,18 @@ import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { deviceRegistry } from "@/data/device-catalog";
 import { IpConfigurationPanel } from "@/components/inspector/ip-configuration-panel";
+import {
+  CliConfigurationPanel,
+  ConfigurationHistoryPanel,
+  ConfigurationStatusPanel,
+  ConnectedRoutesPanel,
+  RawConfigurationPanel,
+  RenderedConfigurationPanel,
+} from "@/components/inspector/configuration-panels";
+import { createDeviceRuntimeConfig } from "@/domain/configuration/configuration-engine";
 import { cn } from "@/lib/utils";
+import { applyDeviceConfiguration } from "@/services/configuration-service";
+import { useConfigurationStore } from "@/stores/configuration-store";
 import { useTopologyStore } from "@/stores/topology-store";
 import { useWorkspaceStore } from "@/stores/workspace-store";
 
@@ -46,6 +57,9 @@ export function DeviceInspector() {
   const updateDevice = useTopologyStore((state) => state.updateDevice);
   const removeDevice = useTopologyStore((state) => state.removeDevice);
   const duplicateDevice = useTopologyStore((state) => state.duplicateDevice);
+  const deviceConfiguration = useConfigurationStore((state) =>
+    device ? state.configurationState.devices[device.id] : undefined,
+  );
   const definition = device ? deviceRegistry.get(device.type) : undefined;
   const form = useForm<OverviewForm>({
     resolver: zodResolver(overviewSchema),
@@ -70,10 +84,24 @@ export function DeviceInspector() {
     );
   }
 
-  const inspectorTabs = definition?.inspectorTabs ?? ["overview", "interfaces"];
+  const inspectorTabs = Array.from(
+    new Set([
+      ...(definition?.inspectorTabs ?? ["overview", "interfaces"]),
+      "configuration",
+      "cli",
+      "raw-config",
+      "running-config",
+      "startup-config",
+      "history",
+      "tables",
+    ]),
+  );
   const submitOverview = ({ hostname }: OverviewForm) => {
-    updateDevice(device.id, { hostname });
-    toast.success("บันทึก hostname แล้ว");
+    const candidate = structuredClone(deviceConfiguration?.runningConfig ?? createDeviceRuntimeConfig(device));
+    candidate.system.hostname = hostname;
+    const result = applyDeviceConfiguration(device.id, candidate, "form");
+    if (result.applied) toast.success("บันทึก hostname แล้ว");
+    else toast.error(result.validation.issues[0]?.message ?? "Hostname ไม่ถูกต้อง");
   };
 
   return (
@@ -221,8 +249,44 @@ export function DeviceInspector() {
             </TabsContent>
           )}
 
+          <TabsContent value="configuration" className="mt-0">
+            <ConfigurationStatusPanel device={device} />
+          </TabsContent>
+          <TabsContent value="cli" className="mt-0">
+            <CliConfigurationPanel device={device} />
+          </TabsContent>
+          <TabsContent value="raw-config" className="mt-0">
+            <RawConfigurationPanel device={device} />
+          </TabsContent>
+          <TabsContent value="running-config" className="mt-0">
+            <RenderedConfigurationPanel device={device} kind="running" />
+          </TabsContent>
+          <TabsContent value="startup-config" className="mt-0">
+            <RenderedConfigurationPanel device={device} kind="startup" />
+          </TabsContent>
+          <TabsContent value="history" className="mt-0">
+            <ConfigurationHistoryPanel device={device} />
+          </TabsContent>
+          <TabsContent value="tables" className="mt-0">
+            <ConnectedRoutesPanel device={device} />
+          </TabsContent>
+
           {inspectorTabs
-            .filter((tab) => tab !== "overview" && tab !== "interfaces" && tab !== "ip")
+            .filter(
+              (tab) =>
+                ![
+                  "overview",
+                  "interfaces",
+                  "ip",
+                  "configuration",
+                  "cli",
+                  "raw-config",
+                  "running-config",
+                  "startup-config",
+                  "history",
+                  "tables",
+                ].includes(tab),
+            )
             .map((tab) => (
               <TabsContent key={tab} value={tab} className="mt-0">
                 <div className="border-border bg-muted/25 rounded-lg border border-dashed p-4">

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { deviceRegistry } from "@/data/device-catalog";
 import { createDemoProject } from "@/data/demo-topology";
+import { useConfigurationStore } from "@/stores/configuration-store";
 import { useHistoryStore } from "@/stores/history-store";
 import { useTopologyStore } from "@/stores/topology-store";
 
@@ -15,16 +16,20 @@ describe("topology store", () => {
     const device = deviceRegistry.create("pc");
     useTopologyStore.getState().addDevice(device);
     expect(useTopologyStore.getState().devices).toHaveLength(1);
+    expect(useConfigurationStore.getState().configurationState.devices[device.id]).toBeDefined();
     useTopologyStore.getState().removeDevice(device.id);
     expect(useTopologyStore.getState().devices).toHaveLength(0);
+    expect(useConfigurationStore.getState().configurationState.devices[device.id]).toBeUndefined();
   });
 
   it("supports undo and redo", () => {
     useTopologyStore.getState().addDevice(deviceRegistry.create("pc"));
     useTopologyStore.getState().undo();
     expect(useTopologyStore.getState().devices).toHaveLength(0);
+    expect(Object.keys(useConfigurationStore.getState().configurationState.devices)).toHaveLength(0);
     useTopologyStore.getState().redo();
     expect(useTopologyStore.getState().devices).toHaveLength(1);
+    expect(Object.keys(useConfigurationStore.getState().configurationState.devices)).toHaveLength(1);
   });
 
   it("adds a validated connection between known devices", () => {

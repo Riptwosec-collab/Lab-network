@@ -17,6 +17,7 @@ export function toProjectExport(project: NetLabProject): ProjectExport {
       schemaVersion: project.schemaVersion,
       canvasSettings: project.canvasSettings,
       simulationSettings: project.simulationSettings,
+      configurationState: project.configurationState,
       createdAt: project.createdAt,
       updatedAt: project.updatedAt,
     },

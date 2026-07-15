@@ -60,3 +60,26 @@ test("edits IPv4 configuration from the device inspector", async ({ page }) => {
   await expect(nasNode).toContainText("192.168.1.11");
   expect(errors).toEqual([]);
 });
+
+test("applies CLI configuration and saves startup config", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") errors.push(message.text());
+  });
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.goto("/workspace?project=demo-project");
+  const pcNode = page.locator(".react-flow__node").filter({ hasText: "pc-" });
+  await pcNode.dispatchEvent("click");
+  await page.getByRole("tab", { name: "cli" }).click();
+  const command = page.getByRole("textbox", { name: "CLI command", exact: true });
+  for (const value of ["enable", "configure terminal", "hostname PC-CLI-01", "end", "write memory"]) {
+    await command.fill(value);
+    await command.press("Enter");
+  }
+  await expect(pcNode).toContainText("PC-CLI-01");
+  await page.getByRole("tab", { name: "running-config" }).click();
+  await expect(page.getByRole("tabpanel", { name: "running-config" })).toContainText("hostname PC-CLI-01");
+  await page.getByRole("tab", { name: "startup-config" }).click();
+  await expect(page.getByRole("tabpanel", { name: "startup-config" })).toContainText("hostname PC-CLI-01");
+  expect(errors).toEqual([]);
+});

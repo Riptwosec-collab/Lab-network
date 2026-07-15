@@ -1,6 +1,7 @@
 import { nanoid } from "nanoid";
 
 import { deviceRegistry } from "@/data/device-catalog";
+import { createProjectConfigurationState } from "@/domain/configuration/configuration-engine";
 import {
   CURRENT_PROJECT_SCHEMA_VERSION,
   type NetLabProject,
@@ -113,6 +114,7 @@ export function createDemoProject(): NetLabProject {
     groups: [],
     canvasSettings: { snapToGrid: true, showGrid: true, zoom: 0.85 },
     simulationSettings: { speed: 1, autoStart: false },
+    configurationState: createProjectConfigurationState(devices),
     createdAt: now,
     updatedAt: now,
   };

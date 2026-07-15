@@ -4,11 +4,12 @@ Project ใช้ `schemaVersion` สำหรับ migration ของ persist
 
 ```json
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "project": { "id": "...", "name": "...", "canvasSettings": {}, "simulationSettings": {} },
   "devices": [],
   "connections": [],
   "groups": [],
+  "configurationState": { "devices": {}, "auditLog": [] },
   "settings": { "canvas": {}, "simulation": {} }
 }
 ```
@@ -28,6 +29,8 @@ Network interface รองรับ IPv4 fields แบบ optional เพื่
 
 `subnetMask` คำนวณจาก prefix ตอนบันทึก ส่วน ARP cache และ Ping result เป็น runtime state จึงไม่ถูก persist ใน project JSON
 
-Schema v2 เพิ่ม metadata ของ cable (`mtu`, `protocol`, `direction`, `pathStyle`) และรองรับ cable/interface types ที่ละเอียดขึ้น. `src/services/project-migrations.ts` ทำ v1 → v2 แบบ pure function ก่อน Zod validation; Dexie v2 migration อัปเดตทั้ง projects และ projectVersions ในที่เดิมโดยไม่ลบข้อมูลเดิม.
+Schema v2 เพิ่ม metadata ของ cable (`mtu`, `protocol`, `direction`, `pathStyle`) และรองรับ cable/interface types ที่ละเอียดขึ้น
+
+Schema v3 เพิ่ม `configurationState` ซึ่งเก็บ running/startup configuration, ผล validation, revision history และ audit log แยกตามอุปกรณ์ โดย migration จะสร้างค่าเริ่มต้นจาก hostname/interface configuration เดิมเพื่อไม่ให้ข้อมูล v1/v2 สูญหาย `src/services/project-migrations.ts` ทำ migration แบบ pure function ก่อน Zod validation และ Dexie v3 อัปเดตทั้ง projects กับ projectVersions ในที่เดิม
 
 เมื่อเพิ่ม schema version ให้เพิ่ม migration แบบ pure function จาก N ไป N+1 และเก็บ fixture ของเวอร์ชันเดิมไว้ทดสอบ ห้าม mutate raw data ระหว่าง migration

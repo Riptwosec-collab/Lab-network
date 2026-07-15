@@ -85,6 +85,91 @@ export const connectionSchema = z
     path: ["targetDeviceId"],
   });
 
+export const interfaceRuntimeConfigSchema = z.object({
+  interfaceId: z.string().min(1),
+  enabled: z.boolean(),
+  description: z.string().max(240).optional(),
+  macAddress: z.string().optional(),
+  ipv4: z.string().optional(),
+  prefixLength: z.number().int().min(0).max(32).optional(),
+  defaultGateway: z.string().optional(),
+  mtu: z.number().int().min(576).max(9216).optional(),
+  speedMbps: z.number().positive().optional(),
+  duplex: z.enum(["half", "full", "auto"]).optional(),
+});
+
+export const deviceRuntimeConfigSchema = z.object({
+  system: z.object({
+    hostname: z.string().min(1).max(63),
+    domainName: z.string().optional(),
+    description: z.string().optional(),
+    location: z.string().optional(),
+    dnsServers: z.array(z.string()),
+  }),
+  interfaces: z.record(z.string(), interfaceRuntimeConfigSchema),
+  routing: z.object({
+    staticRoutes: z.array(
+      z.object({ destination: z.string(), prefixLength: z.number().int().min(0).max(32), nextHop: z.string() }),
+    ),
+  }),
+  services: z.record(
+    z.string(),
+    z.object({ enabled: z.boolean(), port: z.number().int().min(1).max(65535).optional() }),
+  ),
+});
+
+const configurationValidationResultSchema = z.object({
+  valid: z.boolean(),
+  issues: z.array(z.object({ path: z.string(), message: z.string() })),
+});
+
+const configurationRevisionSchema = z.object({
+  revisionId: z.string().min(1),
+  deviceId: z.string().min(1),
+  timestamp: timestampSchema,
+  source: z.enum(["form", "cli", "raw", "import", "template", "lab-solution", "system"]),
+  changedBy: z.string().min(1),
+  changes: z.array(z.string()),
+  previousRevision: z.string().optional(),
+  validationResult: configurationValidationResultSchema,
+  commitStatus: z.enum(["applied", "saved", "rolled-back"]),
+  before: deviceRuntimeConfigSchema,
+  after: deviceRuntimeConfigSchema,
+});
+
+export const deviceConfigurationStateSchema = z.object({
+  deviceId: z.string().min(1),
+  defaultConfig: deviceRuntimeConfigSchema,
+  runningConfig: deviceRuntimeConfigSchema,
+  startupConfig: deviceRuntimeConfigSchema,
+  candidateConfig: deviceRuntimeConfigSchema,
+  revisions: z.array(configurationRevisionSchema).max(40),
+  status: z.enum(["clean", "modified", "validating", "invalid", "committed", "saved", "rollback-available"]),
+  validationResult: configurationValidationResultSchema,
+});
+
+export const projectConfigurationStateSchema = z.object({
+  devices: z.record(z.string(), deviceConfigurationStateSchema),
+  auditLog: z.array(
+    z.object({
+      id: z.string().min(1),
+      timestamp: timestampSchema,
+      deviceId: z.string().min(1),
+      type: z.enum([
+        "CONFIG_CHANGED",
+        "CONFIG_COMMITTED",
+        "CONFIG_SAVED",
+        "CONFIG_ROLLBACK",
+        "INTERFACE_UP",
+        "INTERFACE_DOWN",
+      ]),
+      source: z.enum(["form", "cli", "raw", "import", "template", "lab-solution", "system"]),
+      message: z.string(),
+      revisionId: z.string().optional(),
+    }),
+  ),
+});
+
 export const projectSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1).max(100),
@@ -107,6 +192,7 @@ export const projectSchema = z.object({
     zoom: z.number().min(0.1).max(4),
   }),
   simulationSettings: z.object({ speed: z.number().positive().max(10), autoStart: z.boolean() }),
+  configurationState: projectConfigurationStateSchema,
   createdAt: timestampSchema,
   updatedAt: timestampSchema,
 });

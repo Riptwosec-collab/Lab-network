@@ -1,8 +1,10 @@
 import { nanoid } from "nanoid";
 import { create } from "zustand";
 
+import { createDeviceConfigurationState } from "@/domain/configuration/configuration-engine";
 import { canUseCable, isInterfaceAvailable } from "@/domain/interfaces/port-compatibility";
 import { connectionSchema, deviceSchema } from "@/schemas/network.schema";
+import { useConfigurationStore } from "@/stores/configuration-store";
 import { useHistoryStore } from "@/stores/history-store";
 import type { NetworkConnection, NetworkDevice, TopologySnapshot } from "@/types/network";
 
@@ -15,6 +17,11 @@ interface TopologyState extends TopologySnapshot {
   removeDevice(deviceId: string): void;
   duplicateDevice(deviceId: string): void;
   addConnection(connection: NetworkConnection): void;
+  updateConnection(
+    connectionId: string,
+    updates: Partial<Omit<NetworkConnection, "id">>,
+    recordHistory?: boolean,
+  ): void;
   removeConnection(connectionId: string): void;
   selectDevice(deviceId?: string): void;
   selectConnection(connectionId?: string): void;
@@ -42,6 +49,7 @@ export const useTopologyStore = create<TopologyState>((set, get) => ({
       selectedDeviceId: device.id,
       selectedConnectionId: undefined,
     }));
+    useConfigurationStore.getState().replaceDeviceState(createDeviceConfigurationState(device));
   },
   updateDevice: (deviceId, updates, recordHistory = true) => {
     if (recordHistory) useHistoryStore.getState().record(snapshotFrom(get()));
@@ -63,6 +71,7 @@ export const useTopologyStore = create<TopologyState>((set, get) => ({
       ),
       selectedDeviceId: state.selectedDeviceId === deviceId ? undefined : state.selectedDeviceId,
     }));
+    useConfigurationStore.getState().removeDeviceState(deviceId);
   },
   duplicateDevice: (deviceId) => {
     const source = get().devices.find((device) => device.id === deviceId);
@@ -106,6 +115,14 @@ export const useTopologyStore = create<TopologyState>((set, get) => ({
     useHistoryStore.getState().record(snapshotFrom(state));
     set((current) => ({ connections: [...current.connections, connection], selectedConnectionId: connection.id }));
   },
+  updateConnection: (connectionId, updates, recordHistory = true) => {
+    if (recordHistory) useHistoryStore.getState().record(snapshotFrom(get()));
+    set((state) => ({
+      connections: state.connections.map((connection) =>
+        connection.id === connectionId ? connectionSchema.parse({ ...connection, ...updates }) : connection,
+      ),
+    }));
+  },
   removeConnection: (connectionId) => {
     useHistoryStore.getState().record(snapshotFrom(get()));
     set((state) => ({ connections: state.connections.filter((connection) => connection.id !== connectionId) }));
@@ -115,13 +132,23 @@ export const useTopologyStore = create<TopologyState>((set, get) => ({
   replaceTopology: (snapshot, resetHistory = true) => {
     if (resetHistory) useHistoryStore.getState().clear();
     set({ ...structuredClone(snapshot), selectedDeviceId: undefined, selectedConnectionId: undefined });
+    const configuration = useConfigurationStore.getState();
+    configuration.hydrate(configuration.configurationState, snapshot.devices);
   },
   undo: () => {
     const snapshot = useHistoryStore.getState().undo(snapshotFrom(get()));
-    if (snapshot) set({ ...snapshot, selectedDeviceId: undefined, selectedConnectionId: undefined });
+    if (snapshot) {
+      set({ ...snapshot, selectedDeviceId: undefined, selectedConnectionId: undefined });
+      const configuration = useConfigurationStore.getState();
+      configuration.hydrate(configuration.configurationState, snapshot.devices);
+    }
   },
   redo: () => {
     const snapshot = useHistoryStore.getState().redo(snapshotFrom(get()));
-    if (snapshot) set({ ...snapshot, selectedDeviceId: undefined, selectedConnectionId: undefined });
+    if (snapshot) {
+      set({ ...snapshot, selectedDeviceId: undefined, selectedConnectionId: undefined });
+      const configuration = useConfigurationStore.getState();
+      configuration.hydrate(configuration.configurationState, snapshot.devices);
+    }
   },
 }));

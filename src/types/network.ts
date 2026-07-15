@@ -67,7 +67,7 @@ export const CABLE_TYPES = [
   "sd-wan",
 ] as const;
 
-export const CURRENT_PROJECT_SCHEMA_VERSION = 2;
+export const CURRENT_PROJECT_SCHEMA_VERSION = 3;
 
 export type DeviceCategory = (typeof DEVICE_CATEGORIES)[number];
 export type DeviceStatus =
@@ -170,6 +170,80 @@ export interface SimulationSettings {
   autoStart: boolean;
 }
 
+export type ConfigurationSource = "form" | "cli" | "raw" | "import" | "template" | "lab-solution" | "system";
+export type ConfigurationStatus =
+  "clean" | "modified" | "validating" | "invalid" | "committed" | "saved" | "rollback-available";
+
+export interface InterfaceRuntimeConfig {
+  readonly interfaceId: string;
+  enabled: boolean;
+  description?: string;
+  macAddress?: string;
+  ipv4?: string;
+  prefixLength?: number;
+  defaultGateway?: string;
+  mtu?: number;
+  speedMbps?: number;
+  duplex?: "half" | "full" | "auto";
+}
+
+export interface DeviceRuntimeConfig {
+  system: {
+    hostname: string;
+    domainName?: string;
+    description?: string;
+    location?: string;
+    dnsServers: string[];
+  };
+  interfaces: Record<string, InterfaceRuntimeConfig>;
+  routing: { staticRoutes: Array<{ destination: string; prefixLength: number; nextHop: string }> };
+  services: Record<string, { enabled: boolean; port?: number }>;
+}
+
+export interface ConfigurationValidationResult {
+  readonly valid: boolean;
+  readonly issues: Array<{ path: string; message: string }>;
+}
+
+export interface ConfigurationRevision {
+  readonly revisionId: string;
+  readonly deviceId: string;
+  readonly timestamp: string;
+  readonly source: ConfigurationSource;
+  readonly changedBy: string;
+  readonly changes: string[];
+  readonly previousRevision?: string;
+  readonly validationResult: ConfigurationValidationResult;
+  readonly commitStatus: "applied" | "saved" | "rolled-back";
+  readonly before: DeviceRuntimeConfig;
+  readonly after: DeviceRuntimeConfig;
+}
+
+export interface DeviceConfigurationState {
+  readonly deviceId: string;
+  defaultConfig: DeviceRuntimeConfig;
+  runningConfig: DeviceRuntimeConfig;
+  startupConfig: DeviceRuntimeConfig;
+  candidateConfig: DeviceRuntimeConfig;
+  revisions: ConfigurationRevision[];
+  status: ConfigurationStatus;
+  validationResult: ConfigurationValidationResult;
+}
+
+export interface ProjectConfigurationState {
+  readonly devices: Record<string, DeviceConfigurationState>;
+  readonly auditLog: Array<{
+    id: string;
+    timestamp: string;
+    deviceId: string;
+    type:
+      "CONFIG_CHANGED" | "CONFIG_COMMITTED" | "CONFIG_SAVED" | "CONFIG_ROLLBACK" | "INTERFACE_UP" | "INTERFACE_DOWN";
+    source: ConfigurationSource;
+    message: string;
+    revisionId?: string;
+  }>;
+}
+
 export interface NetLabProject {
   readonly id: string;
   name: string;
@@ -181,6 +255,7 @@ export interface NetLabProject {
   groups: TopologyGroup[];
   canvasSettings: CanvasSettings;
   simulationSettings: SimulationSettings;
+  configurationState: ProjectConfigurationState;
   createdAt: string;
   updatedAt: string;
 }

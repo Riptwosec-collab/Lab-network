@@ -3,20 +3,22 @@
 ## Layers
 
 - **UI Layer** — App Router pages ประกอบ client islands เฉพาะส่วนที่ต้องใช้ event handler, browser API หรือ XYFlow
-- **State Layer** — `topology-store`, `history-store`, `project-store` และ `workspace-store` แยก ownership ชัดเจนและอ่านผ่าน selector
+- **State Layer** — `topology-store`, `configuration-store`, `history-store`, `project-store` และ `workspace-store` แยก ownership ชัดเจนและอ่านผ่าน selector
 - **Persistence Layer** — `ProjectRepository` เป็น interface; `IndexedDbProjectRepository` เป็น implementation ปัจจุบัน ทำให้เพิ่ม Supabase/PostgreSQL adapter ภายหลังได้
 - **Validation Layer** — Zod schemas ตรวจทุก record ที่นำเข้า อ่านจาก IndexedDB หรือผ่าน registry/service boundary
 - **Simulation Layer** — Engine, event bus และ worker messages ไม่ import React จึงทดสอบและย้ายไป Web Worker ได้อิสระ
 
 ## Data flow
 
-`UI → domain action → validated store state → project snapshot → repository → IndexedDB`
+`Form / CLI / Raw editor → configuration engine → validated runtime config → topology + configuration stores → project snapshot → IndexedDB`
 
 การโหลดทำย้อนกลับและ validate ก่อนอัปเดต store ทุกครั้ง Autosave debounce 1.5 วินาทีหลัง topology เปลี่ยนเพื่อลด IndexedDB writes ขณะลาก node
 
 ## Extensibility
 
 Device Registry เป็น factory ของ model และ default configuration ส่วน Protocol Registry/Lab Validator จะใช้แนวเดียวกัน Simulation Worker รับเฉพาะ typed serializable messages จึงไม่ผูกกับ DOM
+
+Configuration engine เป็น pure domain layer เดียวสำหรับทุก input source จึงให้ Form, structured CLI และ Monaco JSON editor สร้างผลลัพธ์เดียวกัน Service layer เป็นผู้ sync hostname/interface/link state, revision และ audit log เข้าสู่ stores แบบ atomic ในระดับ action
 
 ## Performance
 

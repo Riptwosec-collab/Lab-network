@@ -11,7 +11,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { createDeviceRuntimeConfig } from "@/domain/configuration/configuration-engine";
 import { analyzeIPv4, ipv4ToInteger, validateInterfaceIPv4 } from "@/engine/protocols/ipv4";
+import { applyDeviceConfiguration } from "@/services/configuration-service";
+import { useConfigurationStore } from "@/stores/configuration-store";
 import { useTopologyStore } from "@/stores/topology-store";
 import type { InterfaceStatus, NetworkDevice } from "@/types/network";
 
@@ -45,7 +48,7 @@ export function IpConfigurationPanel({ device }: { device: NetworkDevice }) {
   const devices = useTopologyStore((state) => state.devices);
   const connections = useTopologyStore((state) => state.connections);
   const groups = useTopologyStore((state) => state.groups);
-  const updateDevice = useTopologyStore((state) => state.updateDevice);
+  const deviceConfiguration = useConfigurationStore((state) => state.configurationState.devices[device.id]);
   const selectedInterface = device.interfaces.find((item) => item.id === selectedInterfaceId) ?? device.interfaces[0];
   const form = useForm<IpFormValues>({
     resolver: zodResolver(ipFormSchema),
@@ -94,7 +97,24 @@ export function IpConfigurationPanel({ device }: { device: NetworkDevice }) {
       setDomainError(issues.map((issue) => issue.message).join(" · "));
       return;
     }
-    updateDevice(device.id, { interfaces });
+    const candidate = structuredClone(deviceConfiguration?.runningConfig ?? createDeviceRuntimeConfig(device));
+    const candidateInterface = candidate.interfaces[selectedInterface.id];
+    if (!candidateInterface) {
+      setDomainError("ไม่พบ interface ใน Configuration Engine");
+      return;
+    }
+    candidate.interfaces[selectedInterface.id] = {
+      ...candidateInterface,
+      ipv4: values.ipv4 || undefined,
+      prefixLength,
+      defaultGateway: values.defaultGateway || undefined,
+      enabled: interfaceStatus !== "administratively-down" && interfaceStatus !== "disabled",
+    };
+    const result = applyDeviceConfiguration(device.id, candidate, "form");
+    if (!result.applied) {
+      setDomainError(result.validation.issues.map((issue) => issue.message).join(" · "));
+      return;
+    }
     setDomainError(undefined);
     toast.success(`บันทึก IPv4 บน ${selectedInterface.name} แล้ว`);
   };
@@ -160,8 +180,7 @@ export function IpConfigurationPanel({ device }: { device: NetworkDevice }) {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="up">Up</SelectItem>
-                <SelectItem value="down">Down</SelectItem>
+                <SelectItem value="up">Enabled</SelectItem>
                 <SelectItem value="administratively-down">Administratively down</SelectItem>
               </SelectContent>
             </Select>

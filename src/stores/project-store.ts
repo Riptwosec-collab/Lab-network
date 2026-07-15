@@ -5,7 +5,12 @@ import { projectRepository } from "@/db/project-repository";
 import { createDemoProject } from "@/data/demo-topology";
 import { ProjectSaveError } from "@/lib/errors";
 import { projectSchema } from "@/schemas/network.schema";
-import { CURRENT_PROJECT_SCHEMA_VERSION, type NetLabProject, type TopologySnapshot } from "@/types/network";
+import {
+  CURRENT_PROJECT_SCHEMA_VERSION,
+  type NetLabProject,
+  type ProjectConfigurationState,
+  type TopologySnapshot,
+} from "@/types/network";
 
 export type SaveStatus = "idle" | "saving" | "saved" | "error";
 
@@ -19,6 +24,7 @@ interface ProjectState {
   createProject(name?: string): NetLabProject;
   setCurrentProject(project: NetLabProject): void;
   updateFromTopology(snapshot: TopologySnapshot): void;
+  updateConfigurationState(configurationState: ProjectConfigurationState): void;
   markDirty(): void;
   loadProject(id: string): Promise<NetLabProject | undefined>;
   loadRecentProjects(): Promise<NetLabProject[]>;
@@ -42,6 +48,7 @@ const blankProject = (name = "Untitled Network"): NetLabProject => {
     groups: [],
     canvasSettings: { snapToGrid: true, showGrid: true, zoom: 1 },
     simulationSettings: { speed: 1, autoStart: false },
+    configurationState: { devices: {}, auditLog: [] },
     createdAt: now,
     updatedAt: now,
   };
@@ -66,6 +73,11 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       currentProject: { ...project, ...structuredClone(snapshot), updatedAt: new Date().toISOString() },
       dirty: true,
     });
+  },
+  updateConfigurationState: (configurationState) => {
+    const project = get().currentProject;
+    if (!project) return;
+    set({ currentProject: { ...project, configurationState, updatedAt: new Date().toISOString() }, dirty: true });
   },
   markDirty: () => set({ dirty: true, saveStatus: "idle" }),
   loadProject: async (id) => {

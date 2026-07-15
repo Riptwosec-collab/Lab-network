@@ -11,6 +11,7 @@ import { WorkspaceToolbar } from "@/components/layout/workspace-toolbar";
 import { useAutosave } from "@/hooks/use-autosave";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { useProjectStore } from "@/stores/project-store";
+import { useConfigurationStore } from "@/stores/configuration-store";
 import { useTopologyStore } from "@/stores/topology-store";
 import { useWorkspaceStore } from "@/stores/workspace-store";
 
@@ -42,6 +43,7 @@ export function WorkspaceClient() {
       if (!project && projectId === "demo-project") project = await ensureDemoProject();
       if (project) {
         useProjectStore.getState().setCurrentProject(project);
+        useConfigurationStore.getState().hydrate(project.configurationState, project.devices);
         replaceTopology({ devices: project.devices, connections: project.connections, groups: project.groups });
       }
       setReady(true);

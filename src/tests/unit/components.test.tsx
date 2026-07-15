@@ -47,6 +47,9 @@ describe("workspace components", () => {
     render(<DeviceInspector />);
     expect(screen.getByRole("tab", { name: "security" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "ip" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "cli" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "raw-config" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "history" })).toBeInTheDocument();
     expect(screen.getByDisplayValue(device.hostname)).toBeInTheDocument();
   });
 });
