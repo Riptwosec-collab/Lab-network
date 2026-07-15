@@ -76,6 +76,7 @@ describe("same-subnet ping engine", () => {
     expect(result.timeline.map((step) => step.kind)).toEqual([
       "validation",
       "arp-request",
+      "layer2",
       "arp-reply",
       "icmp-request",
       "icmp-reply",

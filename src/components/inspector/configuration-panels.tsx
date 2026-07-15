@@ -24,6 +24,8 @@ import {
   saveDeviceStartupConfig,
 } from "@/services/configuration-service";
 import { useConfigurationStore } from "@/stores/configuration-store";
+import { useLayer2Store } from "@/stores/layer2-store";
+import { useTopologyStore } from "@/stores/topology-store";
 import type { NetworkDevice } from "@/types/network";
 
 const MonacoEditor = dynamic(() => import("@monaco-editor/react"), {
@@ -114,6 +116,10 @@ export function ConfigurationStatusPanel({ device }: { device: NetworkDevice }) 
 
 export function CliConfigurationPanel({ device }: { device: NetworkDevice }) {
   const configuration = useDeviceConfiguration(device);
+  const devices = useTopologyStore((state) => state.devices);
+  const connections = useTopologyStore((state) => state.connections);
+  const groups = useTopologyStore((state) => state.groups);
+  const macTable = useLayer2Store((state) => state.macTable);
   const [context, setContext] = useState<CliContext>({ mode: "user" });
   const [command, setCommand] = useState("");
   const [lines, setLines] = useState<string[]>(["NetLab Educational CLI · type help for commands"]);
@@ -122,7 +128,14 @@ export function CliConfigurationPanel({ device }: { device: NetworkDevice }) {
     const trimmed = command.trim();
     if (!trimmed) return;
     const prompt = cliPrompt(device.hostname, context);
-    const result = executeCliCommand(trimmed, context, device, configuration);
+    const result = executeCliCommand(
+      trimmed,
+      context,
+      device,
+      configuration,
+      { devices, connections, groups },
+      macTable,
+    );
     let output = result.output;
     if (result.action === "apply" && result.nextConfig) {
       const action = applyDeviceConfiguration(device.id, result.nextConfig, "cli");

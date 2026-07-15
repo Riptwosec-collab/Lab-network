@@ -1,4 +1,4 @@
-import type { LabDefinition, LabValidationResult, LabValidator } from "@/types/lab";
+import type { LabDefinition } from "@/types/lab";
 
 const makeLab = (
   id: string,
@@ -61,9 +61,3 @@ export const labs: readonly LabDefinition[] = [
     "เปิด file service และทดสอบ client",
   ]),
 ];
-
-export class MockLabValidator implements LabValidator {
-  async validate(lab: LabDefinition): Promise<readonly LabValidationResult[]> {
-    return lab.tasks.map((task) => ({ taskId: task.id, status: "pending", message: "รอ Simulation Engine ตรวจสอบ" }));
-  }
-}

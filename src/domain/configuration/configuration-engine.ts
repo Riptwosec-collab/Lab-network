@@ -15,6 +15,7 @@ const REVISION_LIMIT = 40;
 const cleanValidation = (): ConfigurationValidationResult => ({ valid: true, issues: [] });
 
 export function createDeviceRuntimeConfig(device: NetworkDevice): DeviceRuntimeConfig {
+  const supportsSwitching = device.category === "switch" || device.capabilities.includes("switching");
   return {
     system: {
       hostname: device.hostname,
@@ -35,9 +36,31 @@ export function createDeviceRuntimeConfig(device: NetworkDevice): DeviceRuntimeC
           mtu: networkInterface.mtu,
           speedMbps: networkInterface.speedMbps,
           duplex: networkInterface.duplex,
+          switchport: supportsSwitching
+            ? {
+                mode: networkInterface.portMode ?? "access",
+                accessVlan: networkInterface.vlan ?? 1,
+                nativeVlan: networkInterface.nativeVlan ?? 1,
+                allowedVlans: networkInterface.allowedVlans ?? [1],
+                stpPriority: 128,
+                portFast: false,
+                bpduGuard: false,
+                rootGuard: false,
+                loopGuard: false,
+              }
+            : undefined,
         },
       ]),
     ),
+    switching: supportsSwitching
+      ? {
+          vlans: { "1": { id: 1, name: "default", status: "active" } },
+          macAgingSeconds: 300,
+          staticMacEntries: [],
+          spanningTree: { mode: "rapid-pvst", priority: 32_768, enabledVlans: [1] },
+          etherChannels: {},
+        }
+      : undefined,
     routing: { staticRoutes: [] },
     services: {},
   };
@@ -64,9 +87,55 @@ export function createProjectConfigurationState(
   const existing = current?.devices ?? {};
   return {
     devices: Object.fromEntries(
-      devices.map((device) => [device.id, existing[device.id] ?? createDeviceConfigurationState(device)]),
+      devices.map((device) => [
+        device.id,
+        existing[device.id]
+          ? normalizeDeviceConfigurationState(device, existing[device.id])
+          : createDeviceConfigurationState(device),
+      ]),
     ),
     auditLog: current?.auditLog ?? [],
+  };
+}
+
+function normalizeDeviceConfigurationState(
+  device: NetworkDevice,
+  current: DeviceConfigurationState,
+): DeviceConfigurationState {
+  const defaults = createDeviceRuntimeConfig(device);
+  const normalizeConfig = (config: DeviceRuntimeConfig): DeviceRuntimeConfig => ({
+    ...defaults,
+    ...config,
+    system: { ...defaults.system, ...config.system },
+    interfaces: Object.fromEntries(
+      Object.entries(defaults.interfaces).map(([interfaceId, value]) => {
+        const existing = config.interfaces[interfaceId];
+        return [
+          interfaceId,
+          {
+            ...value,
+            ...existing,
+            switchport: value.switchport ? { ...value.switchport, ...existing?.switchport } : existing?.switchport,
+          },
+        ];
+      }),
+    ),
+    switching: defaults.switching
+      ? {
+          ...defaults.switching,
+          ...config.switching,
+          vlans: { ...defaults.switching.vlans, ...config.switching?.vlans },
+          spanningTree: { ...defaults.switching.spanningTree, ...config.switching?.spanningTree },
+          etherChannels: { ...defaults.switching.etherChannels, ...config.switching?.etherChannels },
+        }
+      : config.switching,
+  });
+  return {
+    ...current,
+    defaultConfig: normalizeConfig(current.defaultConfig),
+    runningConfig: normalizeConfig(current.runningConfig),
+    startupConfig: normalizeConfig(current.startupConfig),
+    candidateConfig: normalizeConfig(current.candidateConfig),
   };
 }
 
@@ -112,6 +181,45 @@ export function validateRuntimeConfig(
       }
     }
   }
+  const supportsSwitching = device.category === "switch" || device.capabilities.includes("switching");
+  if (config.switching && !supportsSwitching)
+    issues.push({ path: "switching", message: "อุปกรณ์นี้ไม่รองรับ Layer 2 switching configuration" });
+  if (supportsSwitching && !config.switching)
+    issues.push({ path: "switching", message: "Switch ต้องมี switching configuration" });
+  if (config.switching) {
+    const vlanIds = new Set(Object.values(config.switching.vlans).map((vlan) => vlan.id));
+    if (!vlanIds.has(1)) issues.push({ path: "switching.vlans.1", message: "VLAN 1 ต้องอยู่ใน VLAN database" });
+    for (const [interfaceId, value] of Object.entries(config.interfaces)) {
+      const switchport = value.switchport;
+      if (!switchport) continue;
+      if (!vlanIds.has(switchport.accessVlan))
+        issues.push({
+          path: `interfaces.${interfaceId}.switchport.accessVlan`,
+          message: "Access VLAN ไม่มีใน VLAN database",
+        });
+      if (!vlanIds.has(switchport.nativeVlan))
+        issues.push({
+          path: `interfaces.${interfaceId}.switchport.nativeVlan`,
+          message: "Native VLAN ไม่มีใน VLAN database",
+        });
+      for (const vlanId of switchport.allowedVlans) {
+        if (!vlanIds.has(vlanId))
+          issues.push({
+            path: `interfaces.${interfaceId}.switchport.allowedVlans`,
+            message: `Allowed VLAN ${vlanId} ไม่มีใน VLAN database`,
+          });
+      }
+    }
+    for (const [channelId, channel] of Object.entries(config.switching.etherChannels)) {
+      for (const interfaceId of channel.memberInterfaceIds) {
+        if (!config.interfaces[interfaceId])
+          issues.push({
+            path: `switching.etherChannels.${channelId}`,
+            message: `ไม่พบ member interface ${interfaceId}`,
+          });
+      }
+    }
+  }
   return { valid: issues.length === 0, issues };
 }
 
@@ -135,6 +243,10 @@ export function applyRuntimeConfig(device: NetworkDevice, config: DeviceRuntimeC
         mtu: item.mtu ?? networkInterface.mtu,
         speedMbps: item.speedMbps ?? networkInterface.speedMbps,
         duplex: item.duplex ?? networkInterface.duplex,
+        vlan: item.switchport?.accessVlan ?? networkInterface.vlan,
+        nativeVlan: item.switchport?.nativeVlan ?? networkInterface.nativeVlan,
+        allowedVlans: item.switchport?.allowedVlans ?? networkInterface.allowedVlans,
+        portMode: item.switchport?.mode ?? networkInterface.portMode,
         status: item.enabled
           ? networkInterface.status === "administratively-down" || networkInterface.status === "disabled"
             ? "down"
@@ -242,18 +354,42 @@ export function diffConfiguration(before: DeviceRuntimeConfig, after: DeviceRunt
     const next = after.interfaces[interfaceId];
     if (JSON.stringify(previous) !== JSON.stringify(next)) changes.push(`interfaces.${interfaceId} modified`);
   }
+  if (JSON.stringify(before.switching) !== JSON.stringify(after.switching))
+    changes.push("switching configuration modified");
   return changes.length ? changes : ["No effective configuration changes"];
 }
 
 export function renderRunningConfig(config: DeviceRuntimeConfig, device: NetworkDevice): string {
   const lines = [`hostname ${config.system.hostname}`];
   if (config.system.domainName) lines.push(`ip domain name ${config.system.domainName}`);
+  if (config.switching) {
+    for (const vlan of Object.values(config.switching.vlans).sort((left, right) => left.id - right.id)) {
+      lines.push("!", `vlan ${vlan.id}`, ` name ${vlan.name}`);
+      if (vlan.status === "suspended") lines.push(" state suspend");
+    }
+    lines.push("!", `spanning-tree mode ${config.switching.spanningTree.mode}`);
+    lines.push(
+      `spanning-tree vlan ${config.switching.spanningTree.enabledVlans.join(",")} priority ${config.switching.spanningTree.priority}`,
+    );
+  }
   for (const networkInterface of device.interfaces) {
     const item = config.interfaces[networkInterface.id];
     if (!item) continue;
     lines.push("!", `interface ${networkInterface.name}`);
     if (item.description) lines.push(` description ${item.description}`);
     if (item.ipv4 && item.prefixLength !== undefined) lines.push(` ip address ${item.ipv4}/${item.prefixLength}`);
+    if (item.switchport) {
+      lines.push(` switchport mode ${item.switchport.mode}`);
+      if (item.switchport.mode === "access") lines.push(` switchport access vlan ${item.switchport.accessVlan}`);
+      if (item.switchport.mode === "trunk") {
+        lines.push(` switchport trunk native vlan ${item.switchport.nativeVlan}`);
+        lines.push(` switchport trunk allowed vlan ${item.switchport.allowedVlans.join(",")}`);
+      }
+      if (item.switchport.portFast) lines.push(" spanning-tree portfast");
+      if (item.switchport.bpduGuard) lines.push(" spanning-tree bpduguard enable");
+      if (item.switchport.channelGroup)
+        lines.push(` channel-group ${item.switchport.channelGroup} mode ${item.switchport.lacpMode ?? "on"}`);
+    }
     lines.push(item.enabled ? " no shutdown" : " shutdown");
   }
   return lines.join("\n");

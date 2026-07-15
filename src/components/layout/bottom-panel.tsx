@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronDown, CircleDot, Info, Network, Radio } from "lucide-react";
+import { ChevronDown, CircleDot, FlaskConical, Info, Network, Radio } from "lucide-react";
 
+import { LabValidationPanel } from "@/components/learning/lab-validation-panel";
 import { PingTool } from "@/components/simulation/ping-tool";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -11,7 +12,7 @@ import { useProjectStore } from "@/stores/project-store";
 import { useTopologyStore } from "@/stores/topology-store";
 import { useWorkspaceStore } from "@/stores/workspace-store";
 
-type BottomPanelTab = "status" | "ping";
+type BottomPanelTab = "status" | "ping" | "validator";
 
 export function BottomPanel() {
   const [activeTab, setActiveTab] = useState<BottomPanelTab>("status");
@@ -46,6 +47,17 @@ export function BottomPanel() {
         <button
           className={cn(
             "flex h-9 items-center gap-2 border-b-2 px-2 text-xs",
+            activeTab === "validator" ? "border-primary text-primary" : "text-muted-foreground border-transparent",
+          )}
+          onClick={() => selectTab("validator")}
+          aria-pressed={activeTab === "validator"}
+        >
+          <FlaskConical className="size-3.5" />
+          Lab Validator
+        </button>
+        <button
+          className={cn(
+            "flex h-9 items-center gap-2 border-b-2 px-2 text-xs",
             activeTab === "ping" ? "border-primary text-primary" : "text-muted-foreground border-transparent",
           )}
           onClick={() => selectTab("ping")}
@@ -69,6 +81,7 @@ export function BottomPanel() {
         </Button>
       </div>
       {open && activeTab === "ping" && <PingTool />}
+      {open && activeTab === "validator" && <LabValidationPanel />}
       {open && activeTab === "status" && (
         <div className="border-border bg-background/55 grid min-h-24 gap-3 border-t p-3 sm:grid-cols-[1fr_1fr_1.4fr]">
           <div className="border-border flex items-center gap-3 rounded-lg border px-3 py-2">
@@ -101,7 +114,7 @@ export function BottomPanel() {
                 <Badge variant={dirty ? "warning" : "success"}>{dirty ? "UNSAVED" : "SYNCED"}</Badge>
               </div>
               <p className="text-muted-foreground mt-1 text-[10px]">
-                Same-subnet Ping และ Dynamic ARP พร้อมใช้งาน · Routing เริ่มใน Phase 14
+                IPv4, ARP, ICMP และ Layer 2 VLAN forwarding พร้อมใช้งาน · Routing อยู่ใน Phase 4
               </p>
             </div>
           </div>

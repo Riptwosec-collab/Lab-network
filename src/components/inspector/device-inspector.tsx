@@ -24,6 +24,7 @@ import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { deviceRegistry } from "@/data/device-catalog";
 import { IpConfigurationPanel } from "@/components/inspector/ip-configuration-panel";
+import { SwitchingConfigurationPanel } from "@/components/inspector/switching-configuration-panel";
 import {
   CliConfigurationPanel,
   ConfigurationHistoryPanel,
@@ -249,6 +250,12 @@ export function DeviceInspector() {
             </TabsContent>
           )}
 
+          {inspectorTabs.includes("vlan") && (
+            <TabsContent value="vlan" className="mt-0">
+              <SwitchingConfigurationPanel key={device.id} device={device} />
+            </TabsContent>
+          )}
+
           <TabsContent value="configuration" className="mt-0">
             <ConfigurationStatusPanel device={device} />
           </TabsContent>
@@ -278,6 +285,7 @@ export function DeviceInspector() {
                   "overview",
                   "interfaces",
                   "ip",
+                  "vlan",
                   "configuration",
                   "cli",
                   "raw-config",

@@ -83,3 +83,47 @@ test("applies CLI configuration and saves startup config", async ({ page }) => {
   await expect(page.getByRole("tabpanel", { name: "startup-config" })).toContainText("hostname PC-CLI-01");
   expect(errors).toEqual([]);
 });
+
+test("enforces VLAN isolation, learns MAC addresses and validates the VLAN lab", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") errors.push(message.text());
+  });
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.goto("/workspace?project=demo-project");
+  const switchNode = page.locator(".react-flow__node").filter({ hasText: "layer-2-switch-" });
+  await switchNode.dispatchEvent("click");
+  await page.getByRole("tab", { name: "vlan" }).click();
+
+  await page.getByLabel("VLAN ID").fill("10");
+  await page.getByLabel("VLAN name").fill("USERS");
+  await page.getByRole("button", { name: "Add VLAN" }).click();
+  await page.getByLabel("VLAN ID").fill("20");
+  await page.getByLabel("VLAN name").fill("SERVERS");
+  await page.getByRole("button", { name: "Add VLAN" }).click();
+
+  const accessVlans = page.getByRole("combobox", { name: /access VLAN/ });
+  await accessVlans.nth(1).click();
+  await page.getByRole("option", { name: /VLAN 10/ }).click();
+  await accessVlans.nth(2).click();
+  await page.getByRole("option", { name: /VLAN 20/ }).click();
+
+  await page.getByRole("button", { name: /Ping Tool/ }).click();
+  await page.getByLabel("Ping source").click();
+  await page.getByRole("option", { name: /192\.168\.1\.100/ }).click();
+  await page.getByLabel("Ping destination").fill("192.168.1.10");
+  await page.getByRole("button", { name: "Run Ping" }).click();
+  await expect(page.getByText("VLAN_MISMATCH").first()).toBeVisible();
+
+  await accessVlans.nth(3).click();
+  await page.getByRole("option", { name: /VLAN 10/ }).click();
+  await page.getByRole("button", { name: "Run Ping" }).click();
+  await expect(page.getByText("Ping successful")).toBeVisible();
+  await expect(page.getByText(/VLAN 10 · [0-9a-f:]+ →/).first()).toBeVisible();
+
+  await page.getByRole("button", { name: "Lab Validator" }).click();
+  await page.getByRole("button", { name: "Validate Lab" }).click();
+  await expect(page.getByText("พบ VLAN 10 และ VLAN 20 ใน running config")).toBeVisible();
+  await expect(page.getByText("พบ access ports ใน VLAN 10 และ VLAN 20")).toBeVisible();
+  expect(errors).toEqual([]);
+});

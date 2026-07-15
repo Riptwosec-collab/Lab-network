@@ -102,6 +102,23 @@ describe("structured CLI engine", () => {
       prefixLength: 24,
     });
   });
+
+  it("creates VLANs and configures a real access switchport", () => {
+    let device = createDemoProject().devices.find((item) => item.category === "switch")!;
+    let state = createDeviceConfigurationState(device);
+    let context: CliContext = { mode: "global-config" };
+    const vlan = executeCliCommand("vlan 10", context, device, state);
+    expect(vlan.action).toBe("apply");
+    ({ nextDevice: device, nextState: state } = applyConfiguration(state, device, vlan.nextConfig!, "cli"));
+    context = vlan.context;
+    const name = executeCliCommand("name USERS", context, device, state);
+    ({ nextDevice: device, nextState: state } = applyConfiguration(state, device, name.nextConfig!, "cli"));
+    context = executeCliCommand("exit", name.context, device, state).context;
+    context = executeCliCommand(`interface ${device.interfaces[0]!.name}`, context, device, state).context;
+    const access = executeCliCommand("switchport access vlan 10", context, device, state);
+    expect(access.nextConfig?.switching?.vlans["10"]?.name).toBe("USERS");
+    expect(access.nextConfig?.interfaces[device.interfaces[0]!.id]?.switchport?.accessVlan).toBe(10);
+  });
 });
 
 describe("configuration integration", () => {

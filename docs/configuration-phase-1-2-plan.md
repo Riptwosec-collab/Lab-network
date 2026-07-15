@@ -12,7 +12,7 @@
 
 - `NetworkDevice.configuration` is an unstructured payload: it has no candidate/running/startup separation, revisions, validation report, diff or rollback.
 - Inspector capability tabs render a configuration JSON preview only; there is no terminal, CLI parser, Monaco raw editor or configuration command engine.
-- Lab validation is `MockLabValidator`; routing, VLAN, DHCP, DNS, NAT, ACL, firewall and wireless configuration must not be exposed as working controls until their simulation phase ships.
+- At the Phase 1–2 audit, Lab validation was `MockLabValidator` and VLAN/routing/services were intentionally unavailable. Phase 3 later replaced the mock with a real topology validator and added VLAN/STP/LACP simulation; routing and services remain deferred to their own phases.
 - A link label does not currently derive its state from an interface shutdown action.
 
 ## Compatibility constraints

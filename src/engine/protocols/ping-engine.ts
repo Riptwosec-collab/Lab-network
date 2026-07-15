@@ -1,5 +1,6 @@
 import { ArpCache, type ArpEntry } from "@/engine/protocols/arp-cache";
 import { analyzeIPv4, isAddressInSubnet, validateTopologyIPv4 } from "@/engine/protocols/ipv4";
+import { Layer2Engine, type Layer2FailureCode, type Layer2TraceResult } from "@/engine/protocols/layer2-engine";
 import type { NetworkConnection, NetworkDevice, NetworkInterface, TopologySnapshot } from "@/types/network";
 
 export type PingFailureCode =
@@ -10,9 +11,10 @@ export type PingFailureCode =
   | "INTERFACE_DOWN"
   | "DESTINATION_UNREACHABLE"
   | "LINK_DOWN"
-  | "ROUTING_NOT_SUPPORTED";
+  | "ROUTING_NOT_SUPPORTED"
+  | Layer2FailureCode;
 
-export type PingStepKind = "validation" | "arp-request" | "arp-reply" | "icmp-request" | "icmp-reply";
+export type PingStepKind = "validation" | "layer2" | "arp-request" | "arp-reply" | "icmp-request" | "icmp-reply";
 
 export interface PingTimelineStep {
   readonly id: string;
@@ -40,6 +42,7 @@ export interface PingResult {
   readonly reason: string;
   readonly timeline: readonly PingTimelineStep[];
   readonly arpEntries: readonly ArpEntry[];
+  readonly layer2?: Layer2TraceResult;
 }
 
 interface InterfaceOwner {
@@ -70,6 +73,7 @@ export class IPv4PingEngine {
       reason: string,
       source?: InterfaceOwner,
       destination?: InterfaceOwner,
+      layer2?: Layer2TraceResult,
     ): PingResult => ({
       success: false,
       sourceDeviceId: request.sourceDeviceId,
@@ -81,6 +85,7 @@ export class IPv4PingEngine {
       reason,
       timeline,
       arpEntries: this.arpCache.list(now),
+      layer2,
     });
 
     const sourceDevice = this.topology.devices.find((device) => device.id === request.sourceDeviceId);
@@ -146,7 +151,7 @@ export class IPv4PingEngine {
         "Routing deferred",
         `ส่งต่อผ่าน ${source.networkInterface.defaultGateway} ต้องใช้ routing engine`,
       );
-      return fail("ROUTING_NOT_SUPPORTED", "Ping ข้าม subnet จะรองรับใน Phase 14", source, destination);
+      return fail("ROUTING_NOT_SUPPORTED", "Ping ข้าม subnet จะรองรับใน Phase 4", source, destination);
     }
 
     const cached = this.arpCache.get(source.device.id, request.destinationIp, now);
@@ -181,22 +186,18 @@ export class IPv4PingEngine {
       );
     }
 
-    const activePath = this.findPath(source.device.id, destination.device.id, true);
-    if (!activePath) {
-      const physicalPath = this.findPath(source.device.id, destination.device.id, false);
-      step(
-        "icmp-request",
-        "failure",
-        physicalPath ? "Link down" : "No physical path",
-        `ไม่พบ active path จาก ${source.device.hostname} ไป ${destination.device.hostname}`,
-      );
-      return fail(
-        physicalPath ? "LINK_DOWN" : "DESTINATION_UNREACHABLE",
-        physicalPath ? "ลิงก์หรือ interface ระหว่างทางอยู่ในสถานะ down" : "ไม่มีเส้นทางเชื่อมต่อถึง Destination",
-        source,
-        destination,
-      );
+    const layer2 = new Layer2Engine(this.topology).trace(source, destination);
+    if (!layer2.success) {
+      step("layer2", "failure", layer2.failureCode ?? "Layer 2 forwarding failed", layer2.reason);
+      return fail(layer2.failureCode ?? "DESTINATION_UNREACHABLE", layer2.reason, source, destination, layer2);
     }
+    step("layer2", "success", `VLAN ${layer2.vlanId} forwarding`, layer2.reason);
+    const activePath: GraphPath = {
+      devices: layer2.deviceIds,
+      connections: layer2.connectionIds
+        .map((connectionId) => this.topology.connections.find((connection) => connection.id === connectionId))
+        .filter((connection): connection is NetworkConnection => !!connection),
+    };
 
     if (!cached) {
       const macAddress = destination.networkInterface.macAddress ?? deriveMacAddress(destination.networkInterface.id);
@@ -230,6 +231,7 @@ export class IPv4PingEngine {
       reason: "ได้รับ ICMP Echo Reply",
       timeline,
       arpEntries: this.arpCache.list(now),
+      layer2,
     };
   }
 
@@ -251,44 +253,6 @@ export class IPv4PingEngine {
       if (networkInterface) return { device, networkInterface };
     }
     return undefined;
-  }
-
-  private findPath(sourceDeviceId: string, destinationDeviceId: string, activeOnly: boolean): GraphPath | undefined {
-    if (sourceDeviceId === destinationDeviceId) return { devices: [sourceDeviceId], connections: [] };
-    const queue: Array<{ deviceId: string; devices: string[]; connections: NetworkConnection[] }> = [
-      { deviceId: sourceDeviceId, devices: [sourceDeviceId], connections: [] },
-    ];
-    const visited = new Set([sourceDeviceId]);
-    while (queue.length) {
-      const current = queue.shift()!;
-      for (const connection of this.topology.connections) {
-        const nextDeviceId =
-          connection.sourceDeviceId === current.deviceId
-            ? connection.targetDeviceId
-            : connection.targetDeviceId === current.deviceId
-              ? connection.sourceDeviceId
-              : undefined;
-        if (!nextDeviceId || visited.has(nextDeviceId)) continue;
-        if (activeOnly && !this.isConnectionActive(connection)) continue;
-        const devices = [...current.devices, nextDeviceId];
-        const connections = [...current.connections, connection];
-        if (nextDeviceId === destinationDeviceId) return { devices, connections };
-        visited.add(nextDeviceId);
-        queue.push({ deviceId: nextDeviceId, devices, connections });
-      }
-    }
-    return undefined;
-  }
-
-  private isConnectionActive(connection: NetworkConnection): boolean {
-    if (connection.status !== "up") return false;
-    const source = this.topology.devices.find((device) => device.id === connection.sourceDeviceId);
-    const target = this.topology.devices.find((device) => device.id === connection.targetDeviceId);
-    const sourceInterface = source?.interfaces.find((item) => item.id === connection.sourceInterfaceId);
-    const targetInterface = target?.interfaces.find((item) => item.id === connection.targetInterfaceId);
-    return (
-      (!sourceInterface || sourceInterface.status === "up") && (!targetInterface || targetInterface.status === "up")
-    );
   }
 }
 

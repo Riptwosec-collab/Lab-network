@@ -85,6 +85,22 @@ export const connectionSchema = z
     path: ["targetDeviceId"],
   });
 
+const switchportRuntimeConfigSchema = z.object({
+  mode: z.enum(["access", "trunk", "routed", "dynamic", "disabled"]),
+  accessVlan: z.number().int().min(1).max(4094),
+  nativeVlan: z.number().int().min(1).max(4094),
+  allowedVlans: z.array(z.number().int().min(1).max(4094)),
+  voiceVlan: z.number().int().min(1).max(4094).optional(),
+  stpCost: z.number().int().positive().optional(),
+  stpPriority: z.number().int().min(0).max(240).multipleOf(16),
+  portFast: z.boolean(),
+  bpduGuard: z.boolean(),
+  rootGuard: z.boolean(),
+  loopGuard: z.boolean(),
+  channelGroup: z.number().int().min(1).max(255).optional(),
+  lacpMode: z.enum(["active", "passive", "on"]).optional(),
+});
+
 export const interfaceRuntimeConfigSchema = z.object({
   interfaceId: z.string().min(1),
   enabled: z.boolean(),
@@ -96,6 +112,40 @@ export const interfaceRuntimeConfigSchema = z.object({
   mtu: z.number().int().min(576).max(9216).optional(),
   speedMbps: z.number().positive().optional(),
   duplex: z.enum(["half", "full", "auto"]).optional(),
+  switchport: switchportRuntimeConfigSchema.optional(),
+});
+
+const switchingRuntimeConfigSchema = z.object({
+  vlans: z.record(
+    z.string(),
+    z.object({
+      id: z.number().int().min(1).max(4094),
+      name: z.string().min(1).max(32),
+      status: z.enum(["active", "suspended"]),
+    }),
+  ),
+  macAgingSeconds: z.number().int().min(10).max(1_000_000),
+  staticMacEntries: z.array(
+    z.object({
+      macAddress: z.string().min(1),
+      vlanId: z.number().int().min(1).max(4094),
+      interfaceId: z.string().min(1),
+    }),
+  ),
+  spanningTree: z.object({
+    mode: z.enum(["rstp", "rapid-pvst", "pvst"]),
+    priority: z.number().int().min(0).max(61_440).multipleOf(4096),
+    enabledVlans: z.array(z.number().int().min(1).max(4094)),
+  }),
+  etherChannels: z.record(
+    z.string(),
+    z.object({
+      id: z.number().int().min(1).max(255),
+      protocol: z.enum(["lacp", "static"]),
+      mode: z.enum(["active", "passive", "on"]),
+      memberInterfaceIds: z.array(z.string().min(1)).min(1),
+    }),
+  ),
 });
 
 export const deviceRuntimeConfigSchema = z.object({
@@ -107,6 +157,7 @@ export const deviceRuntimeConfigSchema = z.object({
     dnsServers: z.array(z.string()),
   }),
   interfaces: z.record(z.string(), interfaceRuntimeConfigSchema),
+  switching: switchingRuntimeConfigSchema.optional(),
   routing: z.object({
     staticRoutes: z.array(
       z.object({ destination: z.string(), prefixLength: z.number().int().min(0).max(32), nextHop: z.string() }),
@@ -162,6 +213,9 @@ export const projectConfigurationStateSchema = z.object({
         "CONFIG_ROLLBACK",
         "INTERFACE_UP",
         "INTERFACE_DOWN",
+        "VLAN_CHANGED",
+        "STP_CHANGED",
+        "ETHERCHANNEL_CHANGED",
       ]),
       source: z.enum(["form", "cli", "raw", "import", "template", "lab-solution", "system"]),
       message: z.string(),

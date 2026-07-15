@@ -67,7 +67,7 @@ export const CABLE_TYPES = [
   "sd-wan",
 ] as const;
 
-export const CURRENT_PROJECT_SCHEMA_VERSION = 3;
+export const CURRENT_PROJECT_SCHEMA_VERSION = 4;
 
 export type DeviceCategory = (typeof DEVICE_CATEGORIES)[number];
 export type DeviceStatus =
@@ -185,6 +185,48 @@ export interface InterfaceRuntimeConfig {
   mtu?: number;
   speedMbps?: number;
   duplex?: "half" | "full" | "auto";
+  switchport?: SwitchportRuntimeConfig;
+}
+
+export interface SwitchportRuntimeConfig {
+  mode: "access" | "trunk" | "routed" | "dynamic" | "disabled";
+  accessVlan: number;
+  nativeVlan: number;
+  allowedVlans: number[];
+  voiceVlan?: number;
+  stpCost?: number;
+  stpPriority: number;
+  portFast: boolean;
+  bpduGuard: boolean;
+  rootGuard: boolean;
+  loopGuard: boolean;
+  channelGroup?: number;
+  lacpMode?: "active" | "passive" | "on";
+}
+
+export interface VlanRuntimeConfig {
+  id: number;
+  name: string;
+  status: "active" | "suspended";
+}
+
+export interface EtherChannelRuntimeConfig {
+  id: number;
+  protocol: "lacp" | "static";
+  mode: "active" | "passive" | "on";
+  memberInterfaceIds: string[];
+}
+
+export interface SwitchingRuntimeConfig {
+  vlans: Record<string, VlanRuntimeConfig>;
+  macAgingSeconds: number;
+  staticMacEntries: Array<{ macAddress: string; vlanId: number; interfaceId: string }>;
+  spanningTree: {
+    mode: "rstp" | "rapid-pvst" | "pvst";
+    priority: number;
+    enabledVlans: number[];
+  };
+  etherChannels: Record<string, EtherChannelRuntimeConfig>;
 }
 
 export interface DeviceRuntimeConfig {
@@ -196,6 +238,7 @@ export interface DeviceRuntimeConfig {
     dnsServers: string[];
   };
   interfaces: Record<string, InterfaceRuntimeConfig>;
+  switching?: SwitchingRuntimeConfig;
   routing: { staticRoutes: Array<{ destination: string; prefixLength: number; nextHop: string }> };
   services: Record<string, { enabled: boolean; port?: number }>;
 }
@@ -237,7 +280,15 @@ export interface ProjectConfigurationState {
     timestamp: string;
     deviceId: string;
     type:
-      "CONFIG_CHANGED" | "CONFIG_COMMITTED" | "CONFIG_SAVED" | "CONFIG_ROLLBACK" | "INTERFACE_UP" | "INTERFACE_DOWN";
+      | "CONFIG_CHANGED"
+      | "CONFIG_COMMITTED"
+      | "CONFIG_SAVED"
+      | "CONFIG_ROLLBACK"
+      | "INTERFACE_UP"
+      | "INTERFACE_DOWN"
+      | "VLAN_CHANGED"
+      | "STP_CHANGED"
+      | "ETHERCHANNEL_CHANGED";
     source: ConfigurationSource;
     message: string;
     revisionId?: string;

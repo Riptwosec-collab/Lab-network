@@ -11,6 +11,7 @@ import { ipv4ToInteger } from "@/engine/protocols/ipv4";
 import type { PingResult } from "@/engine/protocols/ping-engine";
 import { usePingWorker } from "@/hooks/use-ping-worker";
 import { cn } from "@/lib/utils";
+import { useLayer2Store } from "@/stores/layer2-store";
 import { useTopologyStore } from "@/stores/topology-store";
 
 export function PingTool() {
@@ -27,6 +28,7 @@ export function PingTool() {
   const [error, setError] = useState<string>();
   const [running, setRunning] = useState(false);
   const runWorkerPing = usePingWorker();
+  const recordLayer2Trace = useLayer2Store((state) => state.recordTrace);
   const effectiveSourceDeviceId = configuredDevices.some((device) => device.id === sourceDeviceId)
     ? sourceDeviceId!
     : (configuredDevices[0]?.id ?? "");
@@ -63,6 +65,7 @@ export function PingTool() {
         { sourceDeviceId: effectiveSourceDeviceId, destinationIp: effectiveDestinationIp },
       );
       setResult(nextResult);
+      if (nextResult.layer2) recordLayer2Trace(nextResult.layer2);
     } catch (workerError) {
       setError(workerError instanceof Error ? workerError.message : "Ping simulation ไม่สำเร็จ");
     } finally {

@@ -46,6 +46,18 @@ export function applyDeviceConfiguration(
       `Applied configuration to ${nextDevice.hostname}`,
       result.nextState.revisions.at(-1)?.revisionId,
     );
+    if (JSON.stringify(currentState.runningConfig.switching?.vlans) !== JSON.stringify(candidate.switching?.vlans))
+      appendAudit(deviceId, "VLAN_CHANGED", source, `Updated VLAN database on ${nextDevice.hostname}`);
+    if (
+      JSON.stringify(currentState.runningConfig.switching?.spanningTree) !==
+      JSON.stringify(candidate.switching?.spanningTree)
+    )
+      appendAudit(deviceId, "STP_CHANGED", source, `Updated spanning-tree on ${nextDevice.hostname}`);
+    if (
+      JSON.stringify(currentState.runningConfig.switching?.etherChannels) !==
+      JSON.stringify(candidate.switching?.etherChannels)
+    )
+      appendAudit(deviceId, "ETHERCHANNEL_CHANGED", source, `Updated EtherChannel on ${nextDevice.hostname}`);
   } else {
     appendAudit(deviceId, "CONFIG_CHANGED", source, "Configuration validation failed");
   }
@@ -156,7 +168,14 @@ function withOperationalInterfaceState(device: NetworkDevice): NetworkDevice {
 
 function appendAudit(
   deviceId: string,
-  type: "CONFIG_CHANGED" | "CONFIG_COMMITTED" | "CONFIG_SAVED" | "CONFIG_ROLLBACK",
+  type:
+    | "CONFIG_CHANGED"
+    | "CONFIG_COMMITTED"
+    | "CONFIG_SAVED"
+    | "CONFIG_ROLLBACK"
+    | "VLAN_CHANGED"
+    | "STP_CHANGED"
+    | "ETHERCHANNEL_CHANGED",
   source: ConfigurationSource,
   message: string,
   revisionId?: string,
