@@ -230,3 +230,26 @@ test("opens the live operations console and monitoring inspector", async ({ page
   await expect(page.getByText("ICMP, SNMP, Syslog and NetFlow framework", { exact: true })).toBeVisible();
   expect(errors).toEqual([]);
 });
+
+test("opens an SMB session and degrades a RAID pool after disk failure", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") errors.push(message.text());
+  });
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.goto("/workspace?project=demo-project");
+  await page.getByRole("button", { name: "Storage LIVE", exact: true }).click();
+  await expect(page.getByTestId("storage-tool")).toBeVisible();
+  await page.getByRole("button", { name: "Connect and transfer" }).click();
+  await expect(page.getByText("CONNECTED", { exact: true })).toBeVisible();
+  await expect(page.getByText("SMB read completed through reachable network path", { exact: true })).toBeVisible();
+
+  const nasNode = page.locator(".react-flow__node").filter({ hasText: "nas-" });
+  await nasNode.dispatchEvent("click");
+  await page.locator("aside").getByRole("tab", { name: "storage", exact: true }).click();
+  await expect(page.getByText("Disk grid", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Fail disk" }).first().click();
+  await expect(page.locator("aside").getByText("degraded", { exact: true })).toBeVisible();
+  await expect(page.locator("aside").getByRole("button", { name: "Start rebuild" })).toBeVisible();
+  expect(errors).toEqual([]);
+});

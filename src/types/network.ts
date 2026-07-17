@@ -67,7 +67,7 @@ export const CABLE_TYPES = [
   "sd-wan",
 ] as const;
 
-export const CURRENT_PROJECT_SCHEMA_VERSION = 8;
+export const CURRENT_PROJECT_SCHEMA_VERSION = 9;
 
 export type DeviceCategory = (typeof DEVICE_CATEGORIES)[number];
 export type DeviceStatus =
@@ -554,6 +554,56 @@ export interface OperationsRuntimeConfig {
   monitoring: MonitoringRuntimeConfig;
 }
 
+export type RaidLevel = "raid0" | "raid1" | "raid5" | "raid6" | "raid10";
+export type StorageProtocol = "smb" | "nfs" | "iscsi";
+
+export interface StorageDiskRuntimeConfig {
+  id: string;
+  model: string;
+  capacityGb: number;
+  status: "healthy" | "failed" | "rebuilding" | "spare";
+  temperatureC: number;
+  healthPercent: number;
+  readWriteState: "read-write" | "read-only";
+}
+
+export interface StoragePoolRuntimeConfig {
+  id: string;
+  name: string;
+  raidLevel: RaidLevel;
+  diskIds: string[];
+  usedCapacityGb: number;
+  rebuildProgress: number;
+  replacementDiskId?: string;
+}
+
+export interface StoragePermissionRuntimeConfig {
+  principalType: "user" | "group" | "everyone";
+  principal: string;
+  access: "read" | "write" | "deny";
+}
+
+export interface StorageShareRuntimeConfig {
+  id: string;
+  name: string;
+  protocol: StorageProtocol;
+  path: string;
+  poolId: string;
+  quotaGb: number;
+  usedCapacityGb: number;
+  enabled: boolean;
+  permissions: StoragePermissionRuntimeConfig[];
+}
+
+export interface StorageRuntimeConfig {
+  enabled: boolean;
+  disks: Record<string, StorageDiskRuntimeConfig>;
+  pools: Record<string, StoragePoolRuntimeConfig>;
+  shares: Record<string, StorageShareRuntimeConfig>;
+  users: Record<string, { username: string; password: string; groupNames: string[]; enabled: boolean }>;
+  groups: Record<string, { name: string; memberUsernames: string[] }>;
+}
+
 export interface DeviceRuntimeConfig {
   system: {
     hostname: string;
@@ -568,6 +618,7 @@ export interface DeviceRuntimeConfig {
   services: ServicesRuntimeConfig;
   security: SecurityRuntimeConfig;
   operations: OperationsRuntimeConfig;
+  storage: StorageRuntimeConfig;
 }
 
 export interface ConfigurationValidationResult {
@@ -627,7 +678,8 @@ export interface ProjectConfigurationState {
       | "RADIUS_CHANGED"
       | "OSPF_CHANGED"
       | "HA_CHANGED"
-      | "MONITORING_CHANGED";
+      | "MONITORING_CHANGED"
+      | "STORAGE_CHANGED";
     source: ConfigurationSource;
     message: string;
     revisionId?: string;

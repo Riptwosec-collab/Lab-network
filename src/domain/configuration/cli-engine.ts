@@ -3,6 +3,7 @@ import { Layer2Engine, type MacAddressEntry } from "@/engine/protocols/layer2-en
 import { IPv4RoutingEngine } from "@/engine/protocols/routing-engine";
 import { OspfEngine } from "@/engine/protocols/ospf-engine";
 import { HighAvailabilityEngine, MonitoringEngine, TroubleshootingEngine } from "@/engine/operations/operations-engine";
+import { StorageSimulationEngine } from "@/engine/storage/storage-engine";
 import { NetworkServicesEngine } from "@/engine/protocols/services-engine";
 import { renderRunningConfig } from "@/domain/configuration/configuration-engine";
 import type { DeviceConfigurationState, DeviceRuntimeConfig, NetworkDevice, TopologySnapshot } from "@/types/network";
@@ -333,6 +334,58 @@ const commandRegistry: readonly CommandDefinition[] = [
           : ["No active alerts."],
       };
     },
+  },
+  {
+    id: "show-storage-disks",
+    modes: ["privileged", "user"],
+    usage: "show storage disks",
+    matches: exact(["show", "storage", "disks"]),
+    execute: ({ context, state }) => ({
+      context,
+      output: [
+        "Disk          Model                         Capacity  State       Health  Temp",
+        ...Object.values(state.runningConfig.storage.disks).map(
+          (disk) =>
+            `${disk.id.padEnd(13)} ${disk.model.padEnd(29)} ${`${disk.capacityGb}GB`.padEnd(9)} ${disk.status.padEnd(11)} ${`${disk.healthPercent}%`.padEnd(7)} ${disk.temperatureC}C`,
+        ),
+      ],
+    }),
+  },
+  {
+    id: "show-storage-pools",
+    modes: ["privileged", "user"],
+    usage: "show storage pools",
+    matches: exact(["show", "storage", "pools"]),
+    execute: ({ context, device, topology, state }) => {
+      if (!topology) return { context, output: ["% Topology state is not available"] };
+      const engine = new StorageSimulationEngine(topology);
+      return {
+        context,
+        output: [
+          "Pool                 RAID    State       Used/Usable       Rebuild",
+          ...Object.values(state.runningConfig.storage.pools).map((pool) => {
+            const analysis = engine.analyzePool(device.id, pool.id);
+            return `${pool.name.padEnd(20)} ${pool.raidLevel.toUpperCase().padEnd(7)} ${(analysis?.state ?? "unknown").padEnd(11)} ${`${pool.usedCapacityGb}/${analysis?.usableCapacityGb ?? 0}GB`.padEnd(17)} ${pool.rebuildProgress}%`;
+          }),
+        ],
+      };
+    },
+  },
+  {
+    id: "show-storage-shares",
+    modes: ["privileged", "user"],
+    usage: "show storage shares",
+    matches: exact(["show", "storage", "shares"]),
+    execute: ({ context, state }) => ({
+      context,
+      output: [
+        "Share                Protocol  Path                       Usage/Quota",
+        ...Object.values(state.runningConfig.storage.shares).map(
+          (share) =>
+            `${share.name.padEnd(20)} ${share.protocol.toUpperCase().padEnd(9)} ${share.path.padEnd(26)} ${share.usedCapacityGb}/${share.quotaGb}GB`,
+        ),
+      ],
+    }),
   },
   {
     id: "diagnose-network",
@@ -1211,6 +1264,47 @@ const commandRegistry: readonly CommandDefinition[] = [
       nextConfig.routing.ospf.enabled = true;
       nextConfig.routing.ospf.networks.push({ id: crypto.randomUUID(), ...parsed, areaId, cost });
       return { context, output: [], nextConfig, action: "apply" };
+    },
+  },
+  {
+    id: "storage-pool-raid",
+    modes: ["global-config"],
+    usage: "storage pool <pool-id> raid <0|1|5|6|10>",
+    matches: starts(["storage", "pool"]),
+    execute: ({ tokens, context, state }) => {
+      const poolId = tokens[2];
+      const raidIndex = tokens.findIndex((token) => token.toLowerCase() === "raid");
+      const level = `raid${tokens[raidIndex + 1] ?? ""}`;
+      if (!poolId || raidIndex < 0 || !["raid0", "raid1", "raid5", "raid6", "raid10"].includes(level))
+        return { context, output: ["% Usage: storage pool <pool-id> raid <0|1|5|6|10>"] };
+      const nextConfig = cloneRunning(state);
+      const pool = nextConfig.storage.pools[poolId];
+      if (!pool) return { context, output: [`% Storage pool ${poolId} not found`] };
+      pool.raidLevel = level as typeof pool.raidLevel;
+      return { context, output: [], nextConfig, action: "apply" };
+    },
+  },
+  {
+    id: "storage-disk-fail",
+    modes: ["global-config"],
+    usage: "storage disk <disk-id> fail",
+    matches: starts(["storage", "disk"]),
+    execute: ({ tokens, context, state }) => {
+      const diskId = tokens[2];
+      if (!diskId || tokens[3]?.toLowerCase() !== "fail")
+        return { context, output: ["% Usage: storage disk <disk-id> fail"] };
+      const nextConfig = cloneRunning(state);
+      const disk = nextConfig.storage.disks[diskId];
+      if (!disk) return { context, output: [`% Storage disk ${diskId} not found`] };
+      disk.status = "failed";
+      disk.healthPercent = 0;
+      disk.readWriteState = "read-only";
+      return {
+        context,
+        output: [`Disk ${diskId} marked failed; pool state recalculated.`],
+        nextConfig,
+        action: "apply",
+      };
     },
   },
   {

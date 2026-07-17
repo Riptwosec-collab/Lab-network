@@ -27,6 +27,12 @@ import {
   renderOperationsRunningConfig,
   validateOperationsRuntimeConfig,
 } from "@/domain/configuration/operations-configuration";
+import {
+  createStorageRuntimeConfig,
+  normalizeStorageRuntimeConfig,
+  renderStorageRunningConfig,
+  validateStorageRuntimeConfig,
+} from "@/domain/configuration/storage-configuration";
 
 const REVISION_LIMIT = 40;
 
@@ -102,6 +108,7 @@ export function createDeviceRuntimeConfig(device: NetworkDevice): DeviceRuntimeC
     services: createServicesRuntimeConfig(),
     security: createSecurityRuntimeConfig(device),
     operations: createOperationsRuntimeConfig(device),
+    storage: createStorageRuntimeConfig(device),
   };
 }
 
@@ -187,6 +194,7 @@ function normalizeDeviceConfigurationState(
     services: normalizeServicesRuntimeConfig(config.services),
     security: normalizeSecurityRuntimeConfig(device, config.security),
     operations: normalizeOperationsRuntimeConfig(device, config.operations),
+    storage: normalizeStorageRuntimeConfig(device, config.storage),
   });
   return {
     ...current,
@@ -335,6 +343,7 @@ export function validateRuntimeConfig(
   issues.push(...validateServicesRuntimeConfig(device, config.services));
   issues.push(...validateSecurityRuntimeConfig(device, config.security));
   issues.push(...validateOperationsRuntimeConfig(device, config.operations));
+  issues.push(...validateStorageRuntimeConfig(device, config.storage));
   return { valid: issues.length === 0, issues };
 }
 
@@ -478,6 +487,7 @@ export function diffConfiguration(before: DeviceRuntimeConfig, after: DeviceRunt
     changes.push("security configuration modified");
   if (JSON.stringify(before.operations) !== JSON.stringify(after.operations))
     changes.push("operations configuration modified");
+  if (JSON.stringify(before.storage) !== JSON.stringify(after.storage)) changes.push("storage configuration modified");
   return changes.length ? changes : ["No effective configuration changes"];
 }
 
@@ -513,6 +523,7 @@ export function renderRunningConfig(config: DeviceRuntimeConfig, device: Network
   lines.push(...renderServicesRunningConfig(config.services));
   lines.push(...renderSecurityRunningConfig(config.security));
   lines.push(...renderOperationsRunningConfig(config.operations));
+  lines.push(...renderStorageRunningConfig(config.storage));
   for (const networkInterface of device.interfaces) {
     const item = config.interfaces[networkInterface.id];
     if (!item) continue;

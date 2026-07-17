@@ -7,6 +7,7 @@ import {
   CircleDot,
   DatabaseZap,
   FlaskConical,
+  HardDrive,
   Info,
   Network,
   Radio,
@@ -18,6 +19,7 @@ import { PingTool } from "@/components/simulation/ping-tool";
 import { ServicesTool } from "@/components/simulation/services-tool";
 import { SecurityTool } from "@/components/simulation/security-tool";
 import { OperationsTool } from "@/components/simulation/operations-tool";
+import { StorageTool } from "@/components/simulation/storage-tool";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -25,7 +27,7 @@ import { useProjectStore } from "@/stores/project-store";
 import { useTopologyStore } from "@/stores/topology-store";
 import { useWorkspaceStore } from "@/stores/workspace-store";
 
-type BottomPanelTab = "status" | "ping" | "services" | "security" | "operations" | "validator";
+type BottomPanelTab = "status" | "ping" | "services" | "security" | "operations" | "storage" | "validator";
 
 export function BottomPanel() {
   const [activeTab, setActiveTab] = useState<BottomPanelTab>("status");
@@ -55,6 +57,19 @@ export function BottomPanel() {
           aria-pressed={activeTab === "operations"}
         >
           <Activity className="size-3.5" /> Operations
+          <Badge variant="success" className="px-1.5 py-0 text-[8px]">
+            LIVE
+          </Badge>
+        </button>
+        <button
+          className={cn(
+            "flex h-9 items-center gap-2 border-b-2 px-2 text-xs",
+            activeTab === "storage" ? "border-primary text-primary" : "text-muted-foreground border-transparent",
+          )}
+          onClick={() => selectTab("storage")}
+          aria-pressed={activeTab === "storage"}
+        >
+          <HardDrive className="size-3.5" /> Storage
           <Badge variant="success" className="px-1.5 py-0 text-[8px]">
             LIVE
           </Badge>
@@ -137,6 +152,7 @@ export function BottomPanel() {
       {open && activeTab === "services" && <ServicesTool />}
       {open && activeTab === "security" && <SecurityTool />}
       {open && activeTab === "operations" && <OperationsTool />}
+      {open && activeTab === "storage" && <StorageTool />}
       {open && activeTab === "validator" && <LabValidationPanel />}
       {open && activeTab === "status" && (
         <div className="border-border bg-background/55 grid min-h-24 gap-3 border-t p-3 sm:grid-cols-[1fr_1fr_1.4fr]">

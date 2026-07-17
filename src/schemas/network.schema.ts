@@ -499,6 +499,65 @@ export const deviceRuntimeConfigSchema = z.object({
         autoCreateIncidents: true,
       },
     }),
+  storage: z
+    .object({
+      enabled: z.boolean(),
+      disks: z.record(
+        z.string(),
+        z.object({
+          id: z.string().min(1),
+          model: z.string().min(1),
+          capacityGb: z.number().positive(),
+          status: z.enum(["healthy", "failed", "rebuilding", "spare"]),
+          temperatureC: z.number().min(-20).max(100),
+          healthPercent: z.number().min(0).max(100),
+          readWriteState: z.enum(["read-write", "read-only"]),
+        }),
+      ),
+      pools: z.record(
+        z.string(),
+        z.object({
+          id: z.string().min(1),
+          name: z.string().min(1),
+          raidLevel: z.enum(["raid0", "raid1", "raid5", "raid6", "raid10"]),
+          diskIds: z.array(z.string()),
+          usedCapacityGb: z.number().nonnegative(),
+          rebuildProgress: z.number().min(0).max(100),
+          replacementDiskId: z.string().optional(),
+        }),
+      ),
+      shares: z.record(
+        z.string(),
+        z.object({
+          id: z.string().min(1),
+          name: z.string().min(1),
+          protocol: z.enum(["smb", "nfs", "iscsi"]),
+          path: z.string().min(1),
+          poolId: z.string().min(1),
+          quotaGb: z.number().positive(),
+          usedCapacityGb: z.number().nonnegative(),
+          enabled: z.boolean(),
+          permissions: z.array(
+            z.object({
+              principalType: z.enum(["user", "group", "everyone"]),
+              principal: z.string(),
+              access: z.enum(["read", "write", "deny"]),
+            }),
+          ),
+        }),
+      ),
+      users: z.record(
+        z.string(),
+        z.object({
+          username: z.string().min(1),
+          password: z.string(),
+          groupNames: z.array(z.string()),
+          enabled: z.boolean(),
+        }),
+      ),
+      groups: z.record(z.string(), z.object({ name: z.string().min(1), memberUsernames: z.array(z.string()) })),
+    })
+    .default({ enabled: false, disks: {}, pools: {}, shares: {}, users: {}, groups: {} }),
 });
 
 const configurationValidationResultSchema = z.object({

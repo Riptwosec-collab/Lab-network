@@ -4,6 +4,7 @@ import { SecuritySimulationEngine } from "@/engine/protocols/security-engine";
 import { OspfEngine } from "@/engine/protocols/ospf-engine";
 import { IPv4RoutingEngine } from "@/engine/protocols/routing-engine";
 import { HighAvailabilityEngine, MonitoringEngine, TroubleshootingEngine } from "@/engine/operations/operations-engine";
+import { StorageSimulationEngine } from "@/engine/storage/storage-engine";
 import type { LabDefinition, LabValidationResult, LabValidator } from "@/types/lab";
 import type { ProjectConfigurationState, TopologySnapshot } from "@/types/network";
 
@@ -27,6 +28,7 @@ export class TopologyLabValidator implements LabValidator {
     if (lab.id === "high-availability") return this.validateHighAvailabilityLab(lab);
     if (lab.id === "network-operations") return this.validateMonitoringLab(lab);
     if (lab.id === "troubleshooting") return this.validateTroubleshootingLab(lab);
+    if (lab.id === "nas-sharing") return this.validateNasLab(lab);
     return lab.tasks.map((task) => ({
       taskId: task.id,
       status: "failed",
@@ -400,6 +402,50 @@ export class TopologyLabValidator implements LabValidator {
         message: findings.length
           ? "Diagnostic evidence and next-action guidance are available"
           : "A detected symptom is required before evidence can be evaluated",
+      },
+    ]);
+  }
+
+  private validateNasLab(lab: LabDefinition): readonly LabValidationResult[] {
+    const storageDevice = this.topology.devices.find(
+      (device) => this.configurationState.devices[device.id]?.runningConfig.storage.enabled,
+    );
+    const storage = storageDevice
+      ? this.configurationState.devices[storageDevice.id]?.runningConfig.storage
+      : undefined;
+    const networkInterface = storageDevice?.interfaces.find(
+      (item) => item.ipv4 && item.prefixLength !== undefined && item.defaultGateway,
+    );
+    const share = storage && Object.values(storage.shares).find((item) => item.enabled);
+    const user = storage && Object.values(storage.users).find((item) => item.enabled);
+    const client = this.topology.devices.find(
+      (device) =>
+        device.id !== storageDevice?.id && (device.category === "end-device" || device.capabilities.includes("client")),
+    );
+    const access =
+      storageDevice && share && user && client
+        ? new StorageSimulationEngine(this.topology).access({
+            clientDeviceId: client.id,
+            storageDeviceId: storageDevice.id,
+            shareId: share.id,
+            username: user.username,
+            password: user.password,
+            protocol: share.protocol,
+            operation: "read",
+          })
+        : undefined;
+    return mapChecks(lab, [
+      {
+        passed: !!networkInterface,
+        message: networkInterface
+          ? `NAS interface uses ${networkInterface.ipv4}/${networkInterface.prefixLength} via ${networkInterface.defaultGateway}`
+          : "Storage device requires IPv4, prefix and default gateway",
+      },
+      {
+        passed: !!access?.success,
+        message: access?.success
+          ? `${share?.protocol.toUpperCase()} access succeeded after network and permission checks`
+          : (access?.reason ?? "Enable a share, identity and reachable client path"),
       },
     ]);
   }

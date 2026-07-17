@@ -97,6 +97,8 @@ export function applyDeviceConfiguration(
       )
         appendAudit(deviceId, "MONITORING_CHANGED", source, `Updated monitoring on ${nextDevice.hostname}`);
     }
+    if (JSON.stringify(currentState.runningConfig.storage) !== JSON.stringify(candidate.storage))
+      appendAudit(deviceId, "STORAGE_CHANGED", source, `Updated storage configuration on ${nextDevice.hostname}`);
   } else {
     appendAudit(deviceId, "CONFIG_CHANGED", source, "Configuration validation failed");
   }
