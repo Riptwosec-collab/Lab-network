@@ -1,5 +1,7 @@
 import { analyzeIPv4, isAddressInSubnet, ipv4ToInteger } from "@/engine/protocols/ipv4";
 import { Layer2Engine, type Layer2TraceResult } from "@/engine/protocols/layer2-engine";
+import { OspfEngine } from "@/engine/protocols/ospf-engine";
+import { HighAvailabilityEngine } from "@/engine/operations/operations-engine";
 import type {
   DeviceRuntimeConfig,
   NetworkDevice,
@@ -18,7 +20,7 @@ export type RoutingFailureCode =
 
 export interface RouteTableEntry {
   readonly deviceId: string;
-  readonly source: "connected" | "static" | "default";
+  readonly source: "connected" | "static" | "default" | "ospf";
   readonly destination: string;
   readonly prefixLength: number;
   readonly nextHop?: string;
@@ -79,7 +81,8 @@ export class IPv4RoutingEngine {
     const staticRoutes = (config?.routing.staticRoutes ?? []).map((route) =>
       this.staticRouteEntry(device, route, connected),
     );
-    return [...connected, ...staticRoutes].sort(compareRoutes);
+    const ospfRoutes = new OspfEngine(this.topology).buildRoutes(device);
+    return [...connected, ...staticRoutes, ...ospfRoutes].sort(compareRoutes);
   }
 
   longestPrefixMatch(device: NetworkDevice, destinationIp: string): RouteTableEntry | undefined {
@@ -169,7 +172,7 @@ export class IPv4RoutingEngine {
       const networkInterface = this.routedInterfaces(device).find((item) => item.ipv4 === ipAddress);
       if (networkInterface) return { device, networkInterface };
     }
-    return undefined;
+    return new HighAvailabilityEngine(this.topology).resolveVirtualIp(ipAddress);
   }
 
   private staticRouteEntry(

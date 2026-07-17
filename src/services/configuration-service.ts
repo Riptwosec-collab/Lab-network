@@ -16,6 +16,7 @@ import type {
   DeviceConfigurationState,
   DeviceRuntimeConfig,
   NetworkDevice,
+  ProjectConfigurationState,
 } from "@/types/network";
 
 export interface ConfigurationActionResult {
@@ -64,6 +65,8 @@ export function applyDeviceConfiguration(
           ? "ROUTE_ADDED"
           : "ROUTE_REMOVED";
       appendAudit(deviceId, eventType, source, `Updated routing table on ${nextDevice.hostname}`);
+      if (JSON.stringify(currentState.runningConfig.routing.ospf) !== JSON.stringify(candidate.routing.ospf))
+        appendAudit(deviceId, "OSPF_CHANGED", source, `Updated OSPF process on ${nextDevice.hostname}`);
     }
     if (JSON.stringify(currentState.runningConfig.services) !== JSON.stringify(candidate.services)) {
       appendAudit(deviceId, "SERVICE_CHANGED", source, `Updated services on ${nextDevice.hostname}`);
@@ -81,6 +84,18 @@ export function applyDeviceConfiguration(
         appendAudit(deviceId, "WIRELESS_CHANGED", source, `Updated wireless configuration on ${nextDevice.hostname}`);
       if (JSON.stringify(currentState.runningConfig.security.radius) !== JSON.stringify(candidate.security.radius))
         appendAudit(deviceId, "RADIUS_CHANGED", source, `Updated RADIUS configuration on ${nextDevice.hostname}`);
+    }
+    if (JSON.stringify(currentState.runningConfig.operations) !== JSON.stringify(candidate.operations)) {
+      if (
+        JSON.stringify(currentState.runningConfig.operations.highAvailability) !==
+        JSON.stringify(candidate.operations.highAvailability)
+      )
+        appendAudit(deviceId, "HA_CHANGED", source, `Updated high availability on ${nextDevice.hostname}`);
+      if (
+        JSON.stringify(currentState.runningConfig.operations.monitoring) !==
+        JSON.stringify(candidate.operations.monitoring)
+      )
+        appendAudit(deviceId, "MONITORING_CHANGED", source, `Updated monitoring on ${nextDevice.hostname}`);
     }
   } else {
     appendAudit(deviceId, "CONFIG_CHANGED", source, "Configuration validation failed");
@@ -192,23 +207,7 @@ function withOperationalInterfaceState(device: NetworkDevice): NetworkDevice {
 
 function appendAudit(
   deviceId: string,
-  type:
-    | "CONFIG_CHANGED"
-    | "CONFIG_COMMITTED"
-    | "CONFIG_SAVED"
-    | "CONFIG_ROLLBACK"
-    | "VLAN_CHANGED"
-    | "STP_CHANGED"
-    | "ETHERCHANNEL_CHANGED"
-    | "ROUTE_ADDED"
-    | "ROUTE_REMOVED"
-    | "SERVICE_CHANGED"
-    | "ACL_CHANGED"
-    | "NAT_CHANGED"
-    | "FIREWALL_CHANGED"
-    | "VPN_CHANGED"
-    | "WIRELESS_CHANGED"
-    | "RADIUS_CHANGED",
+  type: ProjectConfigurationState["auditLog"][number]["type"],
   source: ConfigurationSource,
   message: string,
   revisionId?: string,

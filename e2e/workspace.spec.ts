@@ -210,3 +210,23 @@ test("configures a stateful firewall and associates a wireless client", async ({
   await expect(page.getByText("ASSOCIATED", { exact: true })).toBeVisible();
   expect(errors).toEqual([]);
 });
+
+test("opens the live operations console and monitoring inspector", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") errors.push(message.text());
+  });
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.goto("/workspace?project=demo-project");
+  await page.getByRole("button", { name: "Operations LIVE", exact: true }).click();
+  await expect(page.getByTestId("operations-tool")).toBeVisible();
+  await expect(page.getByText("Availability", { exact: true })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Monitoring", exact: true })).toBeVisible();
+
+  const firewallNode = page.locator(".react-flow__node").filter({ hasText: "firewall-" });
+  await firewallNode.dispatchEvent("click");
+  await page.locator("aside").getByRole("tab", { name: "monitoring", exact: true }).click();
+  await expect(page.getByText("High availability", { exact: true })).toBeVisible();
+  await expect(page.getByText("ICMP, SNMP, Syslog and NetFlow framework", { exact: true })).toBeVisible();
+  expect(errors).toEqual([]);
+});

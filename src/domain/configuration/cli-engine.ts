@@ -1,6 +1,8 @@
 import { ipv4ToInteger } from "@/engine/protocols/ipv4";
 import { Layer2Engine, type MacAddressEntry } from "@/engine/protocols/layer2-engine";
 import { IPv4RoutingEngine } from "@/engine/protocols/routing-engine";
+import { OspfEngine } from "@/engine/protocols/ospf-engine";
+import { HighAvailabilityEngine, MonitoringEngine, TroubleshootingEngine } from "@/engine/operations/operations-engine";
 import { NetworkServicesEngine } from "@/engine/protocols/services-engine";
 import { renderRunningConfig } from "@/domain/configuration/configuration-engine";
 import type { DeviceConfigurationState, DeviceRuntimeConfig, NetworkDevice, TopologySnapshot } from "@/types/network";
@@ -194,12 +196,157 @@ const commandRegistry: readonly CommandDefinition[] = [
       return {
         context,
         output: [
-          "Codes: C - connected, S - static, S* - default",
+          "Codes: C - connected, S - static, S* - default, O - OSPF",
           ...routes.map((route) => {
-            const code = route.source === "connected" ? "C" : route.source === "default" ? "S*" : "S";
+            const code =
+              route.source === "connected"
+                ? "C"
+                : route.source === "default"
+                  ? "S*"
+                  : route.source === "ospf"
+                    ? "O"
+                    : "S";
             return `${code.padEnd(3)} ${route.destination}/${route.prefixLength}${route.nextHop ? ` [${route.administrativeDistance}/${route.metric}] via ${route.nextHop}` : ` is directly connected, ${route.outgoingInterfaceId}`}${route.active ? "" : " (unresolved)"}`;
           }),
         ],
+      };
+    },
+  },
+  {
+    id: "show-ip-protocols",
+    modes: ["privileged", "user"],
+    usage: "show ip protocols",
+    matches: exact(["show", "ip", "protocols"]),
+    execute: ({ context, state }) => {
+      const ospf = state.runningConfig.routing.ospf;
+      return {
+        context,
+        output: ospf.enabled
+          ? [
+              `Routing Protocol is \"ospf ${ospf.processId}\"`,
+              `  Router ID ${ospf.routerId}`,
+              `  Reference bandwidth ${ospf.referenceBandwidthMbps} Mbps`,
+              `  Routing for Networks:`,
+              ...ospf.networks.map(
+                (item) => `    ${item.network}/${item.prefixLength} area ${item.areaId} cost ${item.cost}`,
+              ),
+            ]
+          : ["No dynamic routing protocol is configured."],
+      };
+    },
+  },
+  {
+    id: "show-ip-ospf-neighbor",
+    modes: ["privileged", "user"],
+    usage: "show ip ospf neighbor",
+    matches: exact(["show", "ip", "ospf", "neighbor"]),
+    execute: ({ context, device, topology }) => {
+      if (!topology) return { context, output: ["% Topology state is not available"] };
+      const neighbors = new OspfEngine(topology).neighbors(device);
+      return {
+        context,
+        output: [
+          "Neighbor ID      State  Area  Interface       Cost  Reason",
+          ...neighbors.map(
+            (item) =>
+              `${item.neighborRouterId.padEnd(16)} ${item.state.padEnd(6)} ${item.areaId.padEnd(5)} ${item.localInterfaceId.padEnd(15)} ${String(item.cost).padEnd(5)} ${item.reason}`,
+          ),
+          ...(neighbors.length ? [] : ["No OSPF neighbors."]),
+        ],
+      };
+    },
+  },
+  {
+    id: "show-ip-ospf-database",
+    modes: ["privileged", "user"],
+    usage: "show ip ospf database",
+    matches: exact(["show", "ip", "ospf", "database"]),
+    execute: ({ context, device, topology }) => {
+      if (!topology) return { context, output: ["% Topology state is not available"] };
+      const database = new OspfEngine(topology).database(device);
+      return {
+        context,
+        output: [
+          "Type      Link State ID       Advertising Router Area      Metric",
+          ...database.map(
+            (item) =>
+              `${item.type.padEnd(9)} ${`${item.network}/${item.prefixLength}`.padEnd(19)} ${item.advertisingRouterId.padEnd(18)} ${item.areaId.padEnd(9)} ${item.metric}`,
+          ),
+          ...(database.length ? [] : ["OSPF link-state database is empty."]),
+        ],
+      };
+    },
+  },
+  {
+    id: "show-redundancy",
+    modes: ["privileged", "user"],
+    usage: "show redundancy",
+    matches: exact(["show", "redundancy"]),
+    execute: ({ context, device, topology }) => {
+      if (!topology) return { context, output: ["% Topology state is not available"] };
+      const member = new HighAvailabilityEngine(topology).members().find((item) => item.deviceId === device.id);
+      return {
+        context,
+        output: member
+          ? [
+              `${member.protocol.toUpperCase()} group ${member.groupId}, virtual IP ${member.virtualIp}`,
+              `State ${member.role}, configured priority ${member.configuredPriority}, effective priority ${member.effectivePriority}`,
+              member.reason,
+            ]
+          : ["High availability is not configured."],
+      };
+    },
+  },
+  {
+    id: "show-monitoring",
+    modes: ["privileged", "user"],
+    usage: "show monitoring",
+    matches: exact(["show", "monitoring"]),
+    execute: ({ context, device, topology }) => {
+      if (!topology) return { context, output: ["% Topology state is not available"] };
+      const engine = new MonitoringEngine(topology);
+      const metrics = engine.metrics().filter((item) => item.deviceId === device.id);
+      return {
+        context,
+        output: [
+          "Interface       State      Util%  Latency  Loss%  Errors",
+          ...metrics.map(
+            (item) =>
+              `${item.interfaceName.padEnd(15)} ${item.availability.padEnd(10)} ${String(item.bandwidthUtilizationPercent).padEnd(6)} ${`${item.latencyMs}ms`.padEnd(8)} ${String(item.packetLossPercent).padEnd(6)} ${item.errorCount}`,
+          ),
+        ],
+      };
+    },
+  },
+  {
+    id: "show-alerts",
+    modes: ["privileged", "user"],
+    usage: "show alerts",
+    matches: exact(["show", "alerts"]),
+    execute: ({ context, device, topology }) => {
+      if (!topology) return { context, output: ["% Topology state is not available"] };
+      const alerts = new MonitoringEngine(topology).alerts().filter((item) => item.deviceId === device.id);
+      return {
+        context,
+        output: alerts.length
+          ? alerts.map((item) => `${item.severity.toUpperCase()} ${item.metric}: ${item.message}`)
+          : ["No active alerts."],
+      };
+    },
+  },
+  {
+    id: "diagnose-network",
+    modes: ["privileged", "user"],
+    usage: "diagnose network",
+    matches: exact(["diagnose", "network"]),
+    execute: ({ context, topology }) => {
+      if (!topology) return { context, output: ["% Topology state is not available"] };
+      const findings = new TroubleshootingEngine(topology).analyze();
+      return {
+        context,
+        output: findings.length
+          ? findings.map((item) => `${item.layer} ${item.severity.toUpperCase()}: ${item.symptom} | ${item.evidence}`)
+          : ["No Layer 1 through security faults detected."],
       };
     },
   },
@@ -998,6 +1145,71 @@ const commandRegistry: readonly CommandDefinition[] = [
       );
       if (index < 0) return { context, output: ["% Static route not found"] };
       nextConfig.routing.staticRoutes.splice(index, 1);
+      return { context, output: [], nextConfig, action: "apply" };
+    },
+  },
+  {
+    id: "router-ospf",
+    modes: ["global-config"],
+    usage: "router ospf <process-id>",
+    matches: starts(["router", "ospf"]),
+    execute: ({ tokens, context, state }) => {
+      const processId = Number(tokens[2]);
+      if (!Number.isInteger(processId) || processId < 1 || processId > 65_535)
+        return { context, output: ["% OSPF process ID must be 1-65535"] };
+      const nextConfig = cloneRunning(state);
+      nextConfig.routing.ipRouting = true;
+      nextConfig.routing.ospf.enabled = true;
+      nextConfig.routing.ospf.processId = processId;
+      return {
+        context,
+        output: ["OSPF process enabled. Use ospf router-id and ospf network commands."],
+        nextConfig,
+        action: "apply",
+      };
+    },
+  },
+  {
+    id: "no-router-ospf",
+    modes: ["global-config"],
+    usage: "no router ospf",
+    matches: exact(["no", "router", "ospf"]),
+    execute: ({ context, state }) => {
+      const nextConfig = cloneRunning(state);
+      nextConfig.routing.ospf.enabled = false;
+      return { context, output: [], nextConfig, action: "apply" };
+    },
+  },
+  {
+    id: "ospf-router-id",
+    modes: ["global-config"],
+    usage: "ospf router-id <ipv4>",
+    matches: starts(["ospf", "router-id"]),
+    execute: ({ tokens, context, state }) => {
+      const routerId = tokens[2];
+      if (!routerId || ipv4ToInteger(routerId) === undefined)
+        return { context, output: ["% Valid router ID is required"] };
+      const nextConfig = cloneRunning(state);
+      nextConfig.routing.ospf.routerId = routerId;
+      return { context, output: [], nextConfig, action: "apply" };
+    },
+  },
+  {
+    id: "ospf-network",
+    modes: ["global-config"],
+    usage: "ospf network <network/prefix> area <area-id> [cost <1-65535>]",
+    matches: starts(["ospf", "network"]),
+    execute: ({ tokens, context, state }) => {
+      const parsed = parseNetworkToken(tokens[2]);
+      const areaIndex = tokens.findIndex((token) => token.toLowerCase() === "area");
+      const costIndex = tokens.findIndex((token) => token.toLowerCase() === "cost");
+      const areaId = tokens[areaIndex + 1];
+      const cost = costIndex >= 0 ? Number(tokens[costIndex + 1]) : 10;
+      if (!parsed || areaIndex < 0 || !areaId || !Number.isInteger(cost) || cost < 1 || cost > 65_535)
+        return { context, output: ["% Usage: ospf network <network/prefix> area <area-id> [cost <1-65535>]"] };
+      const nextConfig = cloneRunning(state);
+      nextConfig.routing.ospf.enabled = true;
+      nextConfig.routing.ospf.networks.push({ id: crypto.randomUUID(), ...parsed, areaId, cost });
       return { context, output: [], nextConfig, action: "apply" };
     },
   },

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Plus, Route, Trash2 } from "lucide-react";
+import { Network, Plus, Route, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { createDeviceConfigurationState } from "@/domain/configuration/configuration-engine";
 import { IPv4RoutingEngine } from "@/engine/protocols/routing-engine";
+import { OspfEngine } from "@/engine/protocols/ospf-engine";
 import { applyDeviceConfiguration } from "@/services/configuration-service";
 import { useConfigurationStore } from "@/stores/configuration-store";
 import { useTopologyStore } from "@/stores/topology-store";
@@ -28,12 +29,19 @@ export function RoutingConfigurationPanel({ device }: { device: NetworkDevice })
   const [sviVlan, setSviVlan] = useState("1");
   const [sviIp, setSviIp] = useState("");
   const [sviPrefix, setSviPrefix] = useState("24");
+  const [ospfNetwork, setOspfNetwork] = useState("10.0.0.0");
+  const [ospfPrefix, setOspfPrefix] = useState("24");
+  const [ospfArea, setOspfArea] = useState("0");
+  const [ospfCost, setOspfCost] = useState("10");
   const routing = configuration.runningConfig.routing;
   const routingTable = useMemo(
     () => new IPv4RoutingEngine({ devices, connections, groups }).buildRoutingTable(device),
     [connections, device, devices, groups],
   );
   const vlans = Object.values(configuration.runningConfig.switching?.vlans ?? {});
+  const ospfEngine = useMemo(() => new OspfEngine({ devices, connections, groups }), [connections, devices, groups]);
+  const ospfNeighbors = useMemo(() => ospfEngine.neighbors(device), [device, ospfEngine]);
+  const ospfDatabase = useMemo(() => ospfEngine.database(device), [device, ospfEngine]);
 
   const apply = (update: (candidate: DeviceRuntimeConfig) => void) => {
     const candidate = structuredClone(configuration.runningConfig);
@@ -77,6 +85,21 @@ export function RoutingConfigurationPanel({ device }: { device: NetworkDevice })
       toast.success(`สร้าง SVI Vlan${vlanId} แล้ว`);
       setSviIp("");
     }
+  };
+
+  const addOspfNetwork = () => {
+    if (
+      apply((candidate) => {
+        candidate.routing.ospf.networks.push({
+          id: crypto.randomUUID(),
+          network: ospfNetwork.trim(),
+          prefixLength: Number(ospfPrefix),
+          areaId: ospfArea.trim(),
+          cost: Number(ospfCost),
+        });
+      })
+    )
+      toast.success(`OSPF network ${ospfNetwork}/${ospfPrefix} added`);
   };
 
   return (
@@ -202,6 +225,123 @@ export function RoutingConfigurationPanel({ device }: { device: NetworkDevice })
         </section>
       )}
 
+      <section className="border-border space-y-3 rounded-lg border p-3">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h3 className="text-xs font-semibold">OSPF routing</h3>
+            <p className="text-muted-foreground mt-1 text-[10px]">Single-area and multi-area link-state simulation</p>
+          </div>
+          <input
+            type="checkbox"
+            checked={routing.ospf.enabled}
+            onChange={(event) =>
+              apply((candidate) => {
+                candidate.routing.ospf.enabled = event.target.checked;
+              })
+            }
+            aria-label="Enable OSPF"
+          />
+        </div>
+        {routing.ospf.enabled && (
+          <>
+            <div className="grid grid-cols-2 gap-2">
+              <label className="text-muted-foreground text-[10px]">
+                Process ID
+                <Input
+                  className="mt-1"
+                  value={routing.ospf.processId}
+                  type="number"
+                  onChange={(event) =>
+                    apply((candidate) => {
+                      candidate.routing.ospf.processId = Number(event.target.value);
+                    })
+                  }
+                />
+              </label>
+              <label className="text-muted-foreground text-[10px]">
+                Router ID
+                <Input
+                  className="mt-1"
+                  value={routing.ospf.routerId}
+                  onChange={(event) =>
+                    apply((candidate) => {
+                      candidate.routing.ospf.routerId = event.target.value;
+                    })
+                  }
+                />
+              </label>
+            </div>
+            <div className="grid grid-cols-[1fr_58px_50px_58px] gap-1.5">
+              <Input
+                value={ospfNetwork}
+                onChange={(event) => setOspfNetwork(event.target.value)}
+                aria-label="OSPF network"
+              />
+              <Input
+                value={ospfPrefix}
+                onChange={(event) => setOspfPrefix(event.target.value)}
+                aria-label="OSPF prefix"
+              />
+              <Input value={ospfArea} onChange={(event) => setOspfArea(event.target.value)} aria-label="OSPF area" />
+              <Input value={ospfCost} onChange={(event) => setOspfCost(event.target.value)} aria-label="OSPF cost" />
+            </div>
+            <Button size="sm" variant="outline" className="w-full" onClick={addOspfNetwork}>
+              <Plus /> Add OSPF network
+            </Button>
+            <div className="space-y-1.5">
+              {routing.ospf.networks.map((network, index) => (
+                <div key={network.id} className="border-border flex items-center gap-2 rounded border p-2 text-[10px]">
+                  <Network className="text-primary size-3.5" />
+                  <code className="min-w-0 flex-1 truncate">
+                    {network.network}/{network.prefixLength} area {network.areaId}
+                  </code>
+                  <Badge variant="outline">cost {network.cost}</Badge>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="size-7"
+                    aria-label={`Remove OSPF network ${network.network}`}
+                    onClick={() =>
+                      apply((candidate) => {
+                        candidate.routing.ospf.networks.splice(index, 1);
+                      })
+                    }
+                  >
+                    <Trash2 />
+                  </Button>
+                </div>
+              ))}
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-[10px]">
+              <div className="bg-muted/35 rounded p-2">
+                <p className="font-medium">Neighbors</p>
+                <p className="mt-1 font-mono">
+                  {ospfNeighbors.filter((item) => item.state === "FULL").length} FULL / {ospfNeighbors.length}
+                </p>
+              </div>
+              <div className="bg-muted/35 rounded p-2">
+                <p className="font-medium">LSDB</p>
+                <p className="mt-1 font-mono">{ospfDatabase.length} LSA(s)</p>
+              </div>
+            </div>
+            {ospfNeighbors.map((neighbor) => (
+              <div
+                key={`${neighbor.neighborDeviceId}-${neighbor.localInterfaceId}`}
+                className="border-border rounded border p-2 text-[10px]"
+              >
+                <div className="flex justify-between">
+                  <code>
+                    {neighbor.neighborRouterId} · area {neighbor.areaId}
+                  </code>
+                  <Badge variant={neighbor.state === "FULL" ? "success" : "warning"}>{neighbor.state}</Badge>
+                </div>
+                <p className="text-muted-foreground mt-1">{neighbor.reason}</p>
+              </div>
+            ))}
+          </>
+        )}
+      </section>
+
       <section>
         <h3 className="mb-2 text-xs font-semibold">Routing table</h3>
         <div className="space-y-1.5">
@@ -212,8 +352,14 @@ export function RoutingConfigurationPanel({ device }: { device: NetworkDevice })
             >
               <div className="flex items-center justify-between gap-2">
                 <span>
-                  {route.source === "connected" ? "C" : route.source === "default" ? "S*" : "S"} {route.destination}/
-                  {route.prefixLength}
+                  {route.source === "connected"
+                    ? "C"
+                    : route.source === "default"
+                      ? "S*"
+                      : route.source === "ospf"
+                        ? "O"
+                        : "S"}{" "}
+                  {route.destination}/{route.prefixLength}
                 </span>
                 <Badge variant={route.active ? "success" : "warning"}>{route.active ? "active" : "unresolved"}</Badge>
               </div>

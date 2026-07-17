@@ -4,7 +4,7 @@ Project ใช้ `schemaVersion` สำหรับ migration ของ persist
 
 ```json
 {
-  "schemaVersion": 7,
+  "schemaVersion": 8,
   "project": { "id": "...", "name": "...", "canvasSettings": {}, "simulationSettings": {} },
   "devices": [],
   "connections": [],
@@ -40,5 +40,7 @@ Schema v5 เพิ่ม `ipRouting`, static/default routes พร้อม adm
 Schema v6 เพิ่ม typed `services` configuration สำหรับ DHCP pools, DNS zones/records, NAT/PAT rules และ ordered ACL/interface assignments โดย Dexie v6 migrate ทั้ง projects และ version snapshots ผ่าน pipeline เดิม Dynamic lease, DNS cache และ NAT translation เป็น simulation runtime state จึงไม่ถูกบันทึกเป็น startup config
 
 Schema v7 เพิ่ม typed `security` configuration สำหรับ firewall zones/objects/policies, VPN tunnels, wireless radios/SSIDs และ local RADIUS AAA โดย Dexie v7 migrate projects และ version snapshots ส่วน session/tunnel negotiation/association เป็น runtime state
+
+Schema v8 adds typed OSPF routing plus `operations` configuration for high availability and monitoring. Dexie v8 normalizes projects and version snapshots with safe defaults while neighbor state, LSDB, HA election, live metrics, alerts and incidents remain derived runtime state.
 
 เมื่อเพิ่ม schema version ให้เพิ่ม migration แบบ pure function จาก N ไป N+1 และเก็บ fixture ของเวอร์ชันเดิมไว้ทดสอบ ห้าม mutate raw data ระหว่าง migration

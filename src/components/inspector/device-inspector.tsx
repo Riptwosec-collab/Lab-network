@@ -25,6 +25,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { deviceRegistry } from "@/data/device-catalog";
 import { IpConfigurationPanel } from "@/components/inspector/ip-configuration-panel";
 import { RoutingConfigurationPanel } from "@/components/inspector/routing-configuration-panel";
+import { OperationsConfigurationPanel } from "@/components/inspector/operations-configuration-panel";
 import { ServicesConfigurationPanel } from "@/components/inspector/services-configuration-panel";
 import { SecurityConfigurationPanel } from "@/components/inspector/security-configuration-panel";
 import { SwitchingConfigurationPanel } from "@/components/inspector/switching-configuration-panel";
@@ -98,6 +99,7 @@ export function DeviceInspector() {
         ? ["services"]
         : []),
       "configuration",
+      "monitoring",
       "cli",
       "raw-config",
       "running-config",
@@ -286,6 +288,9 @@ export function DeviceInspector() {
               <SecurityConfigurationPanel key={`wireless-${device.id}`} device={device} />
             </TabsContent>
           )}
+          <TabsContent value="monitoring" className="mt-0">
+            <OperationsConfigurationPanel key={`operations-${device.id}`} device={device} />
+          </TabsContent>
 
           <TabsContent value="configuration" className="mt-0">
             <ConfigurationStatusPanel device={device} />
@@ -322,6 +327,7 @@ export function DeviceInspector() {
                   "security",
                   "wireless",
                   "configuration",
+                  "monitoring",
                   "cli",
                   "raw-config",
                   "running-config",

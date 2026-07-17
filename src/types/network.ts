@@ -67,7 +67,7 @@ export const CABLE_TYPES = [
   "sd-wan",
 ] as const;
 
-export const CURRENT_PROJECT_SCHEMA_VERSION = 7;
+export const CURRENT_PROJECT_SCHEMA_VERSION = 8;
 
 export type DeviceCategory = (typeof DEVICE_CATEGORIES)[number];
 export type DeviceStatus =
@@ -250,6 +250,27 @@ export interface RoutingRuntimeConfig {
   ipRouting: boolean;
   staticRoutes: StaticRouteRuntimeConfig[];
   svis: Record<string, SviRuntimeConfig>;
+  ospf: OspfRuntimeConfig;
+}
+
+export interface OspfNetworkRuntimeConfig {
+  id: string;
+  network: string;
+  prefixLength: number;
+  areaId: string;
+  cost: number;
+  authenticationKey?: string;
+}
+
+export interface OspfRuntimeConfig {
+  enabled: boolean;
+  processId: number;
+  routerId: string;
+  referenceBandwidthMbps: number;
+  passiveInterfaceIds: string[];
+  networks: OspfNetworkRuntimeConfig[];
+  redistributeConnected: boolean;
+  defaultInformationOriginate: boolean;
 }
 
 export interface DhcpExcludedRange {
@@ -499,6 +520,40 @@ export interface SecurityRuntimeConfig {
   radius: RadiusRuntimeConfig;
 }
 
+export type HighAvailabilityProtocol = "hsrp" | "vrrp" | "active-standby" | "dual-isp";
+
+export interface HighAvailabilityRuntimeConfig {
+  enabled: boolean;
+  protocol: HighAvailabilityProtocol;
+  groupId: number;
+  virtualIp: string;
+  priority: number;
+  preempt: boolean;
+  trackedInterfaceIds: string[];
+  trackingDecrement: number;
+  peerDeviceId?: string;
+  healthCheckTarget?: string;
+}
+
+export interface MonitoringRuntimeConfig {
+  enabled: boolean;
+  pollingIntervalSeconds: number;
+  monitoredInterfaceIds: string[];
+  sources: { icmp: boolean; snmp: boolean; syslog: boolean; netflow: boolean };
+  thresholds: {
+    latencyMs: number;
+    packetLossPercent: number;
+    errorCount: number;
+    bandwidthUtilizationPercent: number;
+  };
+  autoCreateIncidents: boolean;
+}
+
+export interface OperationsRuntimeConfig {
+  highAvailability: HighAvailabilityRuntimeConfig;
+  monitoring: MonitoringRuntimeConfig;
+}
+
 export interface DeviceRuntimeConfig {
   system: {
     hostname: string;
@@ -512,6 +567,7 @@ export interface DeviceRuntimeConfig {
   routing: RoutingRuntimeConfig;
   services: ServicesRuntimeConfig;
   security: SecurityRuntimeConfig;
+  operations: OperationsRuntimeConfig;
 }
 
 export interface ConfigurationValidationResult {
@@ -568,7 +624,10 @@ export interface ProjectConfigurationState {
       | "FIREWALL_CHANGED"
       | "VPN_CHANGED"
       | "WIRELESS_CHANGED"
-      | "RADIUS_CHANGED";
+      | "RADIUS_CHANGED"
+      | "OSPF_CHANGED"
+      | "HA_CHANGED"
+      | "MONITORING_CHANGED";
     source: ConfigurationSource;
     message: string;
     revisionId?: string;

@@ -293,6 +293,36 @@ export const deviceRuntimeConfigSchema = z.object({
         }),
       )
       .default({}),
+    ospf: z
+      .object({
+        enabled: z.boolean(),
+        processId: z.number().int().min(1).max(65_535),
+        routerId: z.string(),
+        referenceBandwidthMbps: z.number().int().positive(),
+        passiveInterfaceIds: z.array(z.string()),
+        networks: z.array(
+          z.object({
+            id: z.string().min(1),
+            network: z.string(),
+            prefixLength: z.number().int().min(0).max(32),
+            areaId: z.string().min(1),
+            cost: z.number().int().min(1).max(65_535),
+            authenticationKey: z.string().optional(),
+          }),
+        ),
+        redistributeConnected: z.boolean(),
+        defaultInformationOriginate: z.boolean(),
+      })
+      .default({
+        enabled: false,
+        processId: 1,
+        routerId: "0.0.0.0",
+        referenceBandwidthMbps: 100000,
+        passiveInterfaceIds: [],
+        networks: [],
+        redistributeConnected: false,
+        defaultInformationOriginate: false,
+      }),
   }),
   services: z.object({
     dhcp: z.object({
@@ -411,6 +441,64 @@ export const deviceRuntimeConfigSchema = z.object({
     }),
   }),
   security: securityRuntimeConfigSchema,
+  operations: z
+    .object({
+      highAvailability: z.object({
+        enabled: z.boolean(),
+        protocol: z.enum(["hsrp", "vrrp", "active-standby", "dual-isp"]),
+        groupId: z.number().int().min(1).max(255),
+        virtualIp: z.string(),
+        priority: z.number().int().min(1).max(255),
+        preempt: z.boolean(),
+        trackedInterfaceIds: z.array(z.string()),
+        trackingDecrement: z.number().int().min(0).max(254),
+        peerDeviceId: z.string().optional(),
+        healthCheckTarget: z.string().optional(),
+      }),
+      monitoring: z.object({
+        enabled: z.boolean(),
+        pollingIntervalSeconds: z.number().int().min(5),
+        monitoredInterfaceIds: z.array(z.string()),
+        sources: z.object({
+          icmp: z.boolean(),
+          snmp: z.boolean(),
+          syslog: z.boolean(),
+          netflow: z.boolean(),
+        }),
+        thresholds: z.object({
+          latencyMs: z.number().nonnegative(),
+          packetLossPercent: z.number().min(0).max(100),
+          errorCount: z.number().int().nonnegative(),
+          bandwidthUtilizationPercent: z.number().min(0).max(100),
+        }),
+        autoCreateIncidents: z.boolean(),
+      }),
+    })
+    .default({
+      highAvailability: {
+        enabled: false,
+        protocol: "hsrp",
+        groupId: 1,
+        virtualIp: "",
+        priority: 100,
+        preempt: true,
+        trackedInterfaceIds: [],
+        trackingDecrement: 10,
+      },
+      monitoring: {
+        enabled: true,
+        pollingIntervalSeconds: 30,
+        monitoredInterfaceIds: [],
+        sources: { icmp: true, snmp: true, syslog: true, netflow: false },
+        thresholds: {
+          latencyMs: 100,
+          packetLossPercent: 5,
+          errorCount: 100,
+          bandwidthUtilizationPercent: 85,
+        },
+        autoCreateIncidents: true,
+      },
+    }),
 });
 
 const configurationValidationResultSchema = z.object({

@@ -21,6 +21,12 @@ import type {
   NetworkDevice,
   ProjectConfigurationState,
 } from "@/types/network";
+import {
+  createOperationsRuntimeConfig,
+  normalizeOperationsRuntimeConfig,
+  renderOperationsRunningConfig,
+  validateOperationsRuntimeConfig,
+} from "@/domain/configuration/operations-configuration";
 
 const REVISION_LIMIT = 40;
 
@@ -78,9 +84,24 @@ export function createDeviceRuntimeConfig(device: NetworkDevice): DeviceRuntimeC
           etherChannels: {},
         }
       : undefined,
-    routing: { ipRouting: supportsRouting, staticRoutes: [], svis: {} },
+    routing: {
+      ipRouting: supportsRouting,
+      staticRoutes: [],
+      svis: {},
+      ospf: {
+        enabled: false,
+        processId: 1,
+        routerId: "0.0.0.0",
+        referenceBandwidthMbps: 100_000,
+        passiveInterfaceIds: [],
+        networks: [],
+        redistributeConnected: false,
+        defaultInformationOriginate: false,
+      },
+    },
     services: createServicesRuntimeConfig(),
     security: createSecurityRuntimeConfig(device),
+    operations: createOperationsRuntimeConfig(device),
   };
 }
 
@@ -156,9 +177,16 @@ function normalizeDeviceConfigurationState(
         metric: route.metric ?? 0,
       })),
       svis: { ...defaults.routing.svis, ...config.routing?.svis },
+      ospf: {
+        ...defaults.routing.ospf,
+        ...config.routing?.ospf,
+        passiveInterfaceIds: config.routing?.ospf?.passiveInterfaceIds ?? [],
+        networks: config.routing?.ospf?.networks ?? [],
+      },
     },
     services: normalizeServicesRuntimeConfig(config.services),
     security: normalizeSecurityRuntimeConfig(device, config.security),
+    operations: normalizeOperationsRuntimeConfig(device, config.operations),
   });
   return {
     ...current,
@@ -291,8 +319,22 @@ export function validateRuntimeConfig(
     if (sviAddresses.has(svi.ipv4)) issues.push({ path: `${path}.ipv4`, message: "SVI IPv4 ซ้ำในอุปกรณ์" });
     sviAddresses.add(svi.ipv4);
   }
+  for (const [index, network] of config.routing.ospf.networks.entries()) {
+    const path = `routing.ospf.networks.${index}`;
+    const analysis = analyzeIPv4(network.network, network.prefixLength);
+    if (!analysis || analysis.networkAddress !== network.network)
+      issues.push({ path: `${path}.network`, message: "OSPF network must be a valid network address" });
+    if (!network.areaId.trim()) issues.push({ path: `${path}.areaId`, message: "OSPF area is required" });
+    if (!Number.isInteger(network.cost) || network.cost < 1 || network.cost > 65_535)
+      issues.push({ path: `${path}.cost`, message: "OSPF cost must be between 1 and 65535" });
+  }
+  if (config.routing.ospf.enabled && !supportsRouting)
+    issues.push({ path: "routing.ospf", message: "This device does not support OSPF routing" });
+  if (config.routing.ospf.enabled && ipv4ToInteger(config.routing.ospf.routerId) === undefined)
+    issues.push({ path: "routing.ospf.routerId", message: "OSPF router ID must be a valid IPv4 address" });
   issues.push(...validateServicesRuntimeConfig(device, config.services));
   issues.push(...validateSecurityRuntimeConfig(device, config.security));
+  issues.push(...validateOperationsRuntimeConfig(device, config.operations));
   return { valid: issues.length === 0, issues };
 }
 
@@ -434,6 +476,8 @@ export function diffConfiguration(before: DeviceRuntimeConfig, after: DeviceRunt
     changes.push("services configuration modified");
   if (JSON.stringify(before.security) !== JSON.stringify(after.security))
     changes.push("security configuration modified");
+  if (JSON.stringify(before.operations) !== JSON.stringify(after.operations))
+    changes.push("operations configuration modified");
   return changes.length ? changes : ["No effective configuration changes"];
 }
 
@@ -458,8 +502,17 @@ export function renderRunningConfig(config: DeviceRuntimeConfig, device: Network
   for (const route of config.routing.staticRoutes) {
     lines.push(`ip route ${route.destination}/${route.prefixLength} ${route.nextHop} ${route.administrativeDistance}`);
   }
+  if (config.routing.ospf.enabled) {
+    lines.push("!", `router ospf ${config.routing.ospf.processId}`, ` router-id ${config.routing.ospf.routerId}`);
+    for (const network of config.routing.ospf.networks)
+      lines.push(` network ${network.network}/${network.prefixLength} area ${network.areaId} cost ${network.cost}`);
+    for (const interfaceId of config.routing.ospf.passiveInterfaceIds) lines.push(` passive-interface ${interfaceId}`);
+    if (config.routing.ospf.redistributeConnected) lines.push(" redistribute connected");
+    if (config.routing.ospf.defaultInformationOriginate) lines.push(" default-information originate");
+  }
   lines.push(...renderServicesRunningConfig(config.services));
   lines.push(...renderSecurityRunningConfig(config.security));
+  lines.push(...renderOperationsRunningConfig(config.operations));
   for (const networkInterface of device.interfaces) {
     const item = config.interfaces[networkInterface.id];
     if (!item) continue;

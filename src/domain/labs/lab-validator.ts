@@ -1,6 +1,9 @@
 import { IPv4PingEngine } from "@/engine/protocols/ping-engine";
 import { NetworkServicesEngine } from "@/engine/protocols/services-engine";
 import { SecuritySimulationEngine } from "@/engine/protocols/security-engine";
+import { OspfEngine } from "@/engine/protocols/ospf-engine";
+import { IPv4RoutingEngine } from "@/engine/protocols/routing-engine";
+import { HighAvailabilityEngine, MonitoringEngine, TroubleshootingEngine } from "@/engine/operations/operations-engine";
 import type { LabDefinition, LabValidationResult, LabValidator } from "@/types/lab";
 import type { ProjectConfigurationState, TopologySnapshot } from "@/types/network";
 
@@ -20,6 +23,10 @@ export class TopologyLabValidator implements LabValidator {
     if (lab.id === "guest-wifi") return this.validateWirelessLab(lab);
     if (lab.id === "vpn") return this.validateVpnLab(lab);
     if (lab.id === "firewall-policy") return this.validateFirewallLab(lab);
+    if (lab.id === "ospf") return this.validateOspfLab(lab);
+    if (lab.id === "high-availability") return this.validateHighAvailabilityLab(lab);
+    if (lab.id === "network-operations") return this.validateMonitoringLab(lab);
+    if (lab.id === "troubleshooting") return this.validateTroubleshootingLab(lab);
     return lab.tasks.map((task) => ({
       taskId: task.id,
       status: "failed",
@@ -302,6 +309,97 @@ export class TopologyLabValidator implements LabValidator {
         message: policies.length
           ? `พบ ordered policy ${policies[0]!.name} และ implicit deny`
           : "ต้องเพิ่ม security policy อย่างน้อยหนึ่ง rule",
+      },
+    ]);
+  }
+
+  private validateOspfLab(lab: LabDefinition): readonly LabValidationResult[] {
+    const engine = new OspfEngine(this.topology);
+    const fullNeighbors = this.topology.devices
+      .flatMap((device) => engine.neighbors(device))
+      .filter((item) => item.state === "FULL");
+    const learnedRoutes = this.topology.devices
+      .flatMap((device) => new IPv4RoutingEngine(this.topology).buildRoutingTable(device))
+      .filter((route) => route.source === "ospf" && route.active);
+    return mapChecks(lab, [
+      {
+        passed: fullNeighbors.length > 0,
+        message: fullNeighbors.length
+          ? `Found ${fullNeighbors.length} FULL OSPF adjacency record(s)`
+          : "No FULL OSPF neighbor; compare link state, subnet, area, authentication and passive-interface settings",
+      },
+      {
+        passed: learnedRoutes.length > 0,
+        message: learnedRoutes.length
+          ? `Installed ${learnedRoutes.length} active OSPF route(s)`
+          : "No OSPF route has been learned from a reachable advertising router",
+      },
+    ]);
+  }
+
+  private validateHighAvailabilityLab(lab: LabDefinition): readonly LabValidationResult[] {
+    const members = new HighAvailabilityEngine(this.topology).members();
+    const groups = new Map<string, typeof members>();
+    for (const member of members) {
+      const key = `${member.protocol}:${member.groupId}:${member.virtualIp}`;
+      groups.set(key, [...(groups.get(key) ?? []), member]);
+    }
+    const redundant = [...groups.values()].find((group) => group.length >= 2);
+    const active = redundant?.some((member) => member.role === "active" || member.role === "master");
+    const standby = redundant?.some((member) => member.role === "standby" || member.role === "backup");
+    return mapChecks(lab, [
+      {
+        passed: !!redundant,
+        message: redundant
+          ? `Found redundant group with ${redundant.length} members`
+          : "At least two devices must share protocol, group ID and virtual IP",
+      },
+      {
+        passed: !!active && !!standby,
+        message:
+          active && standby
+            ? "HA election has one owner and a ready standby"
+            : "HA group must elect an active/master and standby/backup member",
+      },
+    ]);
+  }
+
+  private validateMonitoringLab(lab: LabDefinition): readonly LabValidationResult[] {
+    const engine = new MonitoringEngine(this.topology);
+    const metrics = engine.metrics();
+    const alerts = engine.alerts();
+    const incidents = engine.incidents();
+    return mapChecks(lab, [
+      {
+        passed: metrics.length > 0,
+        message: metrics.length
+          ? `Collected ${metrics.length} interface metric record(s)`
+          : "Enable monitoring and select at least one interface",
+      },
+      {
+        passed: alerts.length > 0 || incidents.length > 0,
+        message:
+          alerts.length || incidents.length
+            ? `Detected ${alerts.length} alert(s) and ${incidents.length} incident(s)`
+            : "Introduce a down/degraded link or threshold breach for the NOC workflow",
+      },
+    ]);
+  }
+
+  private validateTroubleshootingLab(lab: LabDefinition): readonly LabValidationResult[] {
+    const findings = new TroubleshootingEngine(this.topology).analyze();
+    return mapChecks(lab, [
+      {
+        passed: findings.length > 0,
+        message: findings.length
+          ? `Found ${findings.length} layered diagnostic symptom(s)`
+          : "No fault is currently observable in live topology state",
+      },
+      {
+        passed: findings.some((item) => !!item.evidence && !!item.recommendation),
+        message: findings.length
+          ? "Diagnostic evidence and next-action guidance are available"
+          : "A detected symptom is required before evidence can be evaluated",
       },
     ]);
   }
