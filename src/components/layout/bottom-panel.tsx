@@ -1,10 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronDown, CircleDot, FlaskConical, Info, Network, Radio } from "lucide-react";
+import { ChevronDown, CircleDot, DatabaseZap, FlaskConical, Info, Network, Radio } from "lucide-react";
 
 import { LabValidationPanel } from "@/components/learning/lab-validation-panel";
 import { PingTool } from "@/components/simulation/ping-tool";
+import { ServicesTool } from "@/components/simulation/services-tool";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -12,7 +13,7 @@ import { useProjectStore } from "@/stores/project-store";
 import { useTopologyStore } from "@/stores/topology-store";
 import { useWorkspaceStore } from "@/stores/workspace-store";
 
-type BottomPanelTab = "status" | "ping" | "validator";
+type BottomPanelTab = "status" | "ping" | "services" | "validator";
 
 export function BottomPanel() {
   const [activeTab, setActiveTab] = useState<BottomPanelTab>("status");
@@ -43,6 +44,20 @@ export function BottomPanel() {
         >
           <CircleDot className="size-3.5" />
           Workspace status
+        </button>
+        <button
+          className={cn(
+            "flex h-9 items-center gap-2 border-b-2 px-2 text-xs",
+            activeTab === "services" ? "border-primary text-primary" : "text-muted-foreground border-transparent",
+          )}
+          onClick={() => selectTab("services")}
+          aria-pressed={activeTab === "services"}
+        >
+          <DatabaseZap className="size-3.5" />
+          Services
+          <Badge variant="success" className="px-1.5 py-0 text-[8px]">
+            LIVE
+          </Badge>
         </button>
         <button
           className={cn(
@@ -81,6 +96,7 @@ export function BottomPanel() {
         </Button>
       </div>
       {open && activeTab === "ping" && <PingTool />}
+      {open && activeTab === "services" && <ServicesTool />}
       {open && activeTab === "validator" && <LabValidationPanel />}
       {open && activeTab === "status" && (
         <div className="border-border bg-background/55 grid min-h-24 gap-3 border-t p-3 sm:grid-cols-[1fr_1fr_1.4fr]">
@@ -110,11 +126,11 @@ export function BottomPanel() {
             <Info className="text-primary size-4 shrink-0" />
             <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <p className="text-xs font-medium">IPv4 & routing engine</p>
+                <p className="text-xs font-medium">IPv4, routing & services engine</p>
                 <Badge variant={dirty ? "warning" : "success"}>{dirty ? "UNSAVED" : "SYNCED"}</Badge>
               </div>
               <p className="text-muted-foreground mt-1 text-[10px]">
-                IPv4, ARP, ICMP, VLAN/STP และ static/inter-VLAN routing พร้อมใช้งาน
+                IPv4, VLAN/STP, routing, DHCP, DNS, NAT/PAT และ ordered ACL พร้อมใช้งาน
               </p>
             </div>
           </div>

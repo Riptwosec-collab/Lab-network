@@ -1,4 +1,5 @@
 import { IPv4PingEngine } from "@/engine/protocols/ping-engine";
+import { NetworkServicesEngine } from "@/engine/protocols/services-engine";
 import type { LabDefinition, LabValidationResult, LabValidator } from "@/types/lab";
 import type { ProjectConfigurationState, TopologySnapshot } from "@/types/network";
 
@@ -12,6 +13,9 @@ export class TopologyLabValidator implements LabValidator {
     if (lab.id === "vlan") return this.validateVlanLab(lab);
     if (lab.id === "ip-ping") return this.validateIpPingLab(lab);
     if (lab.id === "inter-vlan") return this.validateInterVlanLab(lab);
+    if (lab.id === "dhcp") return this.validateDhcpLab(lab);
+    if (lab.id === "dns") return this.validateDnsLab(lab);
+    if (lab.id === "nat-acl") return this.validateNatAclLab(lab);
     return lab.tasks.map((task) => ({
       taskId: task.id,
       status: "failed",
@@ -136,4 +140,98 @@ export class TopologyLabValidator implements LabValidator {
       message: checks[index]?.message ?? "ไม่มี validation rule สำหรับ task นี้",
     }));
   }
+
+  private validateDhcpLab(lab: LabDefinition): readonly LabValidationResult[] {
+    const server = this.topology.devices.find((device) => {
+      const dhcp = this.configurationState.devices[device.id]?.runningConfig.services.dhcp;
+      return dhcp?.enabled && Object.keys(dhcp.pools).length > 0;
+    });
+    const poolName = server
+      ? Object.keys(this.configurationState.devices[server.id]!.runningConfig.services.dhcp.pools)[0]
+      : undefined;
+    const client = this.topology.devices.find(
+      (device) =>
+        device.id !== server?.id && (device.category === "end-device" || device.capabilities.includes("client")),
+    );
+    const lease =
+      server && client && poolName
+        ? new NetworkServicesEngine(this.topology).requestDhcp(client.id, server.id, poolName)
+        : undefined;
+    const checks = [
+      {
+        passed: !!server,
+        message: server ? `พบ DHCP pool บน ${server.hostname}` : "ต้องเปิด DHCP และสร้าง pool อย่างน้อยหนึ่ง pool",
+      },
+      {
+        passed: !!lease?.success,
+        message: lease?.success
+          ? `DORA สำเร็จและได้รับ ${lease.lease?.ipAddress}`
+          : (lease?.reason ?? "ไม่พบ client สำหรับทดสอบ lease"),
+      },
+    ];
+    return mapChecks(lab, checks);
+  }
+
+  private validateDnsLab(lab: LabDefinition): readonly LabValidationResult[] {
+    const server = this.topology.devices.find((device) => {
+      const dns = this.configurationState.devices[device.id]?.runningConfig.services.dns;
+      return dns?.enabled && Object.values(dns.zones).some((zone) => zone.records.length > 0);
+    });
+    const record = server
+      ? Object.values(this.configurationState.devices[server.id]!.runningConfig.services.dns.zones)
+          .flatMap((zone) => zone.records)
+          .find((item) => item.type === "A")
+      : undefined;
+    const client = this.topology.devices.find((device) =>
+      Boolean(this.configurationState.devices[device.id]?.runningConfig.system.dnsServers.length),
+    );
+    const query =
+      client && record ? new NetworkServicesEngine(this.topology).queryDns(client.id, record.name, "A") : undefined;
+    return mapChecks(lab, [
+      {
+        passed: !!server,
+        message: server ? `พบ authoritative DNS zone บน ${server.hostname}` : "ต้องเปิด DNS และเพิ่ม record",
+      },
+      {
+        passed: !!query?.success,
+        message: query?.success
+          ? `DNS response: ${query.values.join(", ")}`
+          : (query?.reason ?? "Client ต้องตั้ง DNS server"),
+      },
+    ]);
+  }
+
+  private validateNatAclLab(lab: LabDefinition): readonly LabValidationResult[] {
+    const natDevice = this.topology.devices.find((device) => {
+      const nat = this.configurationState.devices[device.id]?.runningConfig.services.nat;
+      return nat?.enabled && nat.rules.some((rule) => rule.enabled);
+    });
+    const aclDevice = this.topology.devices.find((device) => {
+      const acl = this.configurationState.devices[device.id]?.runningConfig.services.acl;
+      return acl?.enabled && Object.keys(acl.accessLists).length > 0 && acl.assignments.length > 0;
+    });
+    return mapChecks(lab, [
+      {
+        passed: !!natDevice,
+        message: natDevice ? `พบ NAT/PAT policy บน ${natDevice.hostname}` : "ต้องเปิด NAT และเพิ่ม active rule",
+      },
+      {
+        passed: !!aclDevice,
+        message: aclDevice
+          ? `พบ ordered ACL assignment บน ${aclDevice.hostname}`
+          : "ต้องสร้าง ACL และผูก in/out กับ interface",
+      },
+    ]);
+  }
+}
+
+function mapChecks(
+  lab: LabDefinition,
+  checks: readonly { passed: boolean; message: string }[],
+): readonly LabValidationResult[] {
+  return lab.tasks.map((task, index) => ({
+    taskId: task.id,
+    status: checks[index]?.passed ? "passed" : "failed",
+    message: checks[index]?.message ?? "ไม่มี validation rule สำหรับ task นี้",
+  }));
 }

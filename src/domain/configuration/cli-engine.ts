@@ -1,6 +1,7 @@
 import { ipv4ToInteger } from "@/engine/protocols/ipv4";
 import { Layer2Engine, type MacAddressEntry } from "@/engine/protocols/layer2-engine";
 import { IPv4RoutingEngine } from "@/engine/protocols/routing-engine";
+import { NetworkServicesEngine } from "@/engine/protocols/services-engine";
 import { renderRunningConfig } from "@/domain/configuration/configuration-engine";
 import type { DeviceConfigurationState, DeviceRuntimeConfig, NetworkDevice, TopologySnapshot } from "@/types/network";
 
@@ -162,6 +163,27 @@ const commandRegistry: readonly CommandDefinition[] = [
     }),
   },
   {
+    id: "show-ip-interface",
+    modes: ["privileged", "user"],
+    usage: "show ip interface",
+    matches: exact(["show", "ip", "interface"]),
+    execute: ({ context, device, state }) => ({
+      context,
+      output: device.interfaces.flatMap((networkInterface) => {
+        const item = state.runningConfig.interfaces[networkInterface.id];
+        const assignments = state.runningConfig.services.acl.assignments.filter(
+          (assignment) => assignment.interfaceId === networkInterface.id,
+        );
+        return [
+          `${networkInterface.name} is ${item?.enabled ? networkInterface.status : "administratively down"}`,
+          `  Internet address is ${item?.ipv4 ? `${item.ipv4}/${item.prefixLength}` : "unassigned"}`,
+          `  Inbound access list is ${assignments.find((assignment) => assignment.direction === "in")?.aclName ?? "not set"}`,
+          `  Outbound access list is ${assignments.find((assignment) => assignment.direction === "out")?.aclName ?? "not set"}`,
+        ];
+      }),
+    }),
+  },
+  {
     id: "show-ip-route",
     modes: ["privileged", "user"],
     usage: "show ip route",
@@ -177,6 +199,132 @@ const commandRegistry: readonly CommandDefinition[] = [
             const code = route.source === "connected" ? "C" : route.source === "default" ? "S*" : "S";
             return `${code.padEnd(3)} ${route.destination}/${route.prefixLength}${route.nextHop ? ` [${route.administrativeDistance}/${route.metric}] via ${route.nextHop}` : ` is directly connected, ${route.outgoingInterfaceId}`}${route.active ? "" : " (unresolved)"}`;
           }),
+        ],
+      };
+    },
+  },
+  {
+    id: "show-ip-dhcp-pool",
+    modes: ["privileged", "user"],
+    usage: "show ip dhcp pool",
+    matches: exact(["show", "ip", "dhcp", "pool"]),
+    execute: ({ context, state }) => {
+      const pools = Object.values(state.runningConfig.services.dhcp.pools);
+      return {
+        context,
+        output: [
+          "Pool                 Network             Gateway         Lease(s)",
+          ...pools.map((pool) => {
+            const capacity = Math.min(
+              pool.maximumLeases ?? Number.MAX_SAFE_INTEGER,
+              Math.max(0, (2 ** (32 - pool.prefixLength) || 0) - (pool.prefixLength < 31 ? 2 : 0)),
+            );
+            return `${pool.name.padEnd(20)} ${`${pool.network}/${pool.prefixLength}`.padEnd(20)} ${pool.defaultGateway.padEnd(16)} ${capacity}`;
+          }),
+          ...(pools.length ? [] : ["No DHCP pools configured."]),
+        ],
+      };
+    },
+  },
+  {
+    id: "show-ip-dhcp-binding",
+    modes: ["privileged", "user"],
+    usage: "show ip dhcp binding",
+    matches: exact(["show", "ip", "dhcp", "binding"]),
+    execute: ({ context }) => ({
+      context,
+      output: [
+        "IP address       Client identifier              Lease expiration",
+        "No active bindings in this CLI session.",
+      ],
+    }),
+  },
+  {
+    id: "show-ip-dhcp-conflict",
+    modes: ["privileged", "user"],
+    usage: "show ip dhcp conflict",
+    matches: exact(["show", "ip", "dhcp", "conflict"]),
+    execute: ({ context }) => ({ context, output: ["No DHCP conflicts detected."] }),
+  },
+  {
+    id: "show-access-lists",
+    modes: ["privileged", "user"],
+    usage: "show access-lists",
+    matches: exact(["show", "access-lists"]),
+    execute: ({ context, state }) => {
+      const lists = Object.values(state.runningConfig.services.acl.accessLists);
+      return {
+        context,
+        output: lists.flatMap((acl) => [
+          `${acl.type === "standard" ? "Standard" : "Extended"} IP access list ${acl.name}`,
+          ...[...acl.rules]
+            .sort((left, right) => left.sequence - right.sequence)
+            .map(
+              (rule) =>
+                `  ${rule.sequence} ${rule.action} ${rule.protocol} ${rule.source}/${rule.sourcePrefixLength} ${rule.destination}/${rule.destinationPrefixLength}${rule.destinationPort ? ` eq ${rule.destinationPort}` : ""}${rule.logging ? " log" : ""}`,
+            ),
+          "  implicit deny ip any any",
+        ]),
+      };
+    },
+  },
+  {
+    id: "show-ip-nat-translations",
+    modes: ["privileged", "user"],
+    usage: "show ip nat translations",
+    matches: exact(["show", "ip", "nat", "translations"]),
+    execute: ({ context, state }) => ({
+      context,
+      output: [
+        "Pro  Inside global      Inside local       Outside local      Outside global",
+        ...state.runningConfig.services.nat.rules
+          .filter((rule) => rule.enabled && rule.translatedAddress)
+          .map(
+            (rule) =>
+              `${(rule.protocol ?? "ip").padEnd(4)} ${rule.translatedAddress!.padEnd(18)} ${`${rule.source}/${rule.sourcePrefixLength}`.padEnd(18)} ${`${rule.destination}/${rule.destinationPrefixLength}`.padEnd(18)} ${rule.destination}`,
+          ),
+      ],
+    }),
+  },
+  {
+    id: "show-ip-nat-statistics",
+    modes: ["privileged", "user"],
+    usage: "show ip nat statistics",
+    matches: exact(["show", "ip", "nat", "statistics"]),
+    execute: ({ context, state }) => ({
+      context,
+      output: [
+        `NAT ${state.runningConfig.services.nat.enabled ? "enabled" : "disabled"}`,
+        `Configured rules: ${state.runningConfig.services.nat.rules.length}`,
+        `Pools: ${Object.keys(state.runningConfig.services.nat.pools).length}`,
+        `Translation timeout: ${state.runningConfig.services.nat.translationTimeoutSeconds} seconds`,
+      ],
+    }),
+  },
+  {
+    id: "show-dns-cache",
+    modes: ["privileged", "user"],
+    usage: "show dns cache",
+    matches: exact(["show", "dns", "cache"]),
+    execute: ({ context }) => ({ context, output: ["DNS cache is empty in this CLI session."] }),
+  },
+  {
+    id: "dns-lookup",
+    modes: ["privileged", "user"],
+    usage: "nslookup <name> | dig <name> [type]",
+    matches: (tokens) => tokens[0] === "nslookup" || tokens[0] === "dig",
+    execute: ({ tokens, context, device, topology, state }) => {
+      if (!topology) return { context, output: ["% Topology state is not available"] };
+      const name = tokens[1];
+      const type = (tokens[2]?.toUpperCase() ?? "A") as "A" | "AAAA" | "CNAME" | "MX" | "PTR" | "TXT" | "NS";
+      if (!name) return { context, output: ["% Domain name is required"] };
+      const result = new NetworkServicesEngine(topology).queryDns(device.id, name, type);
+      return {
+        context,
+        output: [
+          `Server: ${state.runningConfig.system.dnsServers[0] ?? "not configured"}`,
+          `Status: ${result.code} (${result.cache})`,
+          ...(result.success ? result.values.map((value) => `${name} ${type} ${value}`) : [result.reason]),
         ],
       };
     },
@@ -335,6 +483,200 @@ const commandRegistry: readonly CommandDefinition[] = [
       if (!hostname) return { context, output: ["% Hostname is required"] };
       const nextConfig = cloneRunning(state);
       nextConfig.system.hostname = hostname;
+      return { context, output: [], nextConfig, action: "apply" };
+    },
+  },
+  {
+    id: "service-enable",
+    modes: ["global-config"],
+    usage: "service <dhcp|dns|nat|acl>",
+    matches: starts(["service"]),
+    execute: ({ tokens, context, state }) => {
+      const service = tokens[1] as "dhcp" | "dns" | "nat" | "acl";
+      if (!(["dhcp", "dns", "nat", "acl"] as const).includes(service))
+        return { context, output: ["% Service must be dhcp, dns, nat or acl"] };
+      const nextConfig = cloneRunning(state);
+      nextConfig.services[service].enabled = true;
+      return { context, output: [], nextConfig, action: "apply" };
+    },
+  },
+  {
+    id: "service-disable",
+    modes: ["global-config"],
+    usage: "no service <dhcp|dns|nat|acl>",
+    matches: starts(["no", "service"]),
+    execute: ({ tokens, context, state }) => {
+      const service = tokens[2] as "dhcp" | "dns" | "nat" | "acl";
+      if (!(["dhcp", "dns", "nat", "acl"] as const).includes(service))
+        return { context, output: ["% Service must be dhcp, dns, nat or acl"] };
+      const nextConfig = cloneRunning(state);
+      nextConfig.services[service].enabled = false;
+      return { context, output: [], nextConfig, action: "apply" };
+    },
+  },
+  {
+    id: "ip-name-server",
+    modes: ["global-config"],
+    usage: "ip name-server <address> [address...]",
+    matches: starts(["ip", "name-server"]),
+    execute: ({ tokens, context, state }) => {
+      const addresses = tokens.slice(2);
+      if (!addresses.length || addresses.some((address) => ipv4ToInteger(address) === undefined))
+        return { context, output: ["% One or more valid IPv4 DNS servers are required"] };
+      const nextConfig = cloneRunning(state);
+      nextConfig.system.dnsServers = [...new Set(addresses)];
+      return { context, output: [], nextConfig, action: "apply" };
+    },
+  },
+  {
+    id: "ip-dhcp-pool",
+    modes: ["global-config"],
+    usage: "ip dhcp pool <name> <network> <prefix> <gateway> [dns-server]",
+    matches: starts(["ip", "dhcp", "pool"]),
+    execute: ({ tokens, context, state }) => {
+      const name = tokens[3];
+      const network = tokens[4];
+      const prefixLength = prefixFrom(tokens[5]);
+      const defaultGateway = tokens[6];
+      const dnsServer = tokens[7];
+      if (!name || !network || prefixLength === undefined || !defaultGateway)
+        return { context, output: ["% Usage: ip dhcp pool <name> <network> <prefix> <gateway> [dns-server]"] };
+      const nextConfig = cloneRunning(state);
+      nextConfig.services.dhcp.enabled = true;
+      nextConfig.services.dhcp.pools[name] = {
+        name,
+        network,
+        prefixLength,
+        defaultGateway,
+        dnsServers: dnsServer ? [dnsServer] : [],
+        leaseSeconds: 86_400,
+        excludedRanges: [],
+        reservations: [],
+        relayAddresses: [],
+      };
+      return { context, output: [], nextConfig, action: "apply" };
+    },
+  },
+  {
+    id: "no-ip-dhcp-pool",
+    modes: ["global-config"],
+    usage: "no ip dhcp pool <name>",
+    matches: starts(["no", "ip", "dhcp", "pool"]),
+    execute: ({ tokens, context, state }) => {
+      const name = tokens[4];
+      const nextConfig = cloneRunning(state);
+      if (!name || !nextConfig.services.dhcp.pools[name]) return { context, output: ["% DHCP pool not found"] };
+      delete nextConfig.services.dhcp.pools[name];
+      return { context, output: [], nextConfig, action: "apply" };
+    },
+  },
+  {
+    id: "dns-record",
+    modes: ["global-config"],
+    usage: "dns record <zone> <A|AAAA|CNAME|MX|PTR|TXT|NS> <name> <value> [ttl]",
+    matches: starts(["dns", "record"]),
+    execute: ({ tokens, context, state }) => {
+      const zoneName = tokens[2];
+      const type = tokens[3]?.toUpperCase() as "A" | "AAAA" | "CNAME" | "MX" | "PTR" | "TXT" | "NS";
+      const name = tokens[4];
+      const value = tokens[5];
+      const ttl = tokens[6] ? Number(tokens[6]) : 300;
+      if (
+        !zoneName ||
+        !(["A", "AAAA", "CNAME", "MX", "PTR", "TXT", "NS"] as const).includes(type) ||
+        !name ||
+        !value ||
+        !Number.isInteger(ttl) ||
+        ttl < 1
+      )
+        return { context, output: ["% Invalid DNS record syntax"] };
+      const nextConfig = cloneRunning(state);
+      nextConfig.services.dns.enabled = true;
+      const zone = (nextConfig.services.dns.zones[zoneName] ??= {
+        name: zoneName,
+        authoritative: true,
+        reverse: zoneName.endsWith("in-addr.arpa"),
+        records: [],
+      });
+      zone.records.push({ id: `${type}:${name}:${zone.records.length + 1}`, name, type, value, ttl });
+      return { context, output: [], nextConfig, action: "apply" };
+    },
+  },
+  {
+    id: "ip-nat-static",
+    modes: ["global-config"],
+    usage: "ip nat inside source static <inside-local> <inside-global>",
+    matches: starts(["ip", "nat", "inside", "source", "static"]),
+    execute: ({ tokens, context, state }) => {
+      const insideLocal = tokens[5];
+      const insideGlobal = tokens[6];
+      if (
+        !insideLocal ||
+        !insideGlobal ||
+        ipv4ToInteger(insideLocal) === undefined ||
+        ipv4ToInteger(insideGlobal) === undefined
+      )
+        return { context, output: ["% Static NAT requires valid inside-local and inside-global IPv4"] };
+      const nextConfig = cloneRunning(state);
+      nextConfig.services.nat.enabled = true;
+      nextConfig.services.nat.rules.push({
+        id: `static-${insideLocal}`,
+        order: nextConfig.services.nat.rules.length * 10 + 10,
+        enabled: true,
+        type: "static",
+        source: insideLocal,
+        sourcePrefixLength: 32,
+        destination: "0.0.0.0",
+        destinationPrefixLength: 0,
+        translatedAddress: insideGlobal,
+        protocol: "ip",
+      });
+      return { context, output: [], nextConfig, action: "apply" };
+    },
+  },
+  {
+    id: "access-list-rule",
+    modes: ["global-config"],
+    usage:
+      "access-list <name> <sequence> <permit|deny> <ip|icmp|tcp|udp> <source/prefix> <destination/prefix> [eq port] [log]",
+    matches: starts(["access-list"]),
+    execute: ({ tokens, context, state }) => {
+      const name = tokens[1];
+      const sequence = Number(tokens[2]);
+      const action = tokens[3] as "permit" | "deny";
+      const protocol = tokens[4] as "ip" | "icmp" | "tcp" | "udp";
+      const source = parseNetworkToken(tokens[5]);
+      const destination = parseNetworkToken(tokens[6]);
+      const eqIndex = tokens.findIndex((token) => token.toLowerCase() === "eq");
+      const destinationPort = eqIndex >= 0 ? Number(tokens[eqIndex + 1]) : undefined;
+      if (
+        !name ||
+        !Number.isInteger(sequence) ||
+        !(["permit", "deny"] as const).includes(action) ||
+        !(["ip", "icmp", "tcp", "udp"] as const).includes(protocol) ||
+        !source ||
+        !destination
+      )
+        return { context, output: ["% Invalid access-list syntax"] };
+      const nextConfig = cloneRunning(state);
+      nextConfig.services.acl.enabled = true;
+      const acl = (nextConfig.services.acl.accessLists[name] ??= {
+        name,
+        type: protocol === "ip" && destination.prefixLength === 0 ? "standard" : "extended",
+        rules: [],
+      });
+      acl.rules = acl.rules.filter((rule) => rule.sequence !== sequence);
+      acl.rules.push({
+        sequence,
+        action,
+        protocol,
+        source: source.network,
+        sourcePrefixLength: source.prefixLength,
+        destination: destination.network,
+        destinationPrefixLength: destination.prefixLength,
+        destinationPort: Number.isInteger(destinationPort) ? destinationPort : undefined,
+        logging: tokens.includes("log"),
+      });
       return { context, output: [], nextConfig, action: "apply" };
     },
   },
@@ -522,6 +864,41 @@ const commandRegistry: readonly CommandDefinition[] = [
     matches: starts(["description"]),
     execute: ({ tokens, context, state }) =>
       updateInterface(context, state, (item) => ({ ...item, description: tokens.slice(1).join(" ") })),
+  },
+  {
+    id: "ip-access-group",
+    modes: ["interface-config"],
+    usage: "ip access-group <name> <in|out>",
+    matches: starts(["ip", "access-group"]),
+    execute: ({ tokens, context, state }) => {
+      const name = tokens[2];
+      const direction = tokens[3] as "in" | "out";
+      if (!context.interfaceId || !name || !(["in", "out"] as const).includes(direction))
+        return { context, output: ["% Usage: ip access-group <name> <in|out>"] };
+      const nextConfig = cloneRunning(state);
+      if (!nextConfig.services.acl.accessLists[name]) return { context, output: [`% ACL ${name} not found`] };
+      nextConfig.services.acl.enabled = true;
+      nextConfig.services.acl.assignments = nextConfig.services.acl.assignments.filter(
+        (item) => !(item.interfaceId === context.interfaceId && item.direction === direction),
+      );
+      nextConfig.services.acl.assignments.push({ interfaceId: context.interfaceId, direction, aclName: name });
+      return { context, output: [], nextConfig, action: "apply" };
+    },
+  },
+  {
+    id: "no-ip-access-group",
+    modes: ["interface-config"],
+    usage: "no ip access-group <name> <in|out>",
+    matches: starts(["no", "ip", "access-group"]),
+    execute: ({ tokens, context, state }) => {
+      const name = tokens[3];
+      const direction = tokens[4] as "in" | "out";
+      const nextConfig = cloneRunning(state);
+      nextConfig.services.acl.assignments = nextConfig.services.acl.assignments.filter(
+        (item) => !(item.interfaceId === context.interfaceId && item.direction === direction && item.aclName === name),
+      );
+      return { context, output: [], nextConfig, action: "apply" };
+    },
   },
   {
     id: "shutdown",
@@ -746,6 +1123,15 @@ function prefixFrom(value: string | undefined): number | undefined {
   const bits = mask.toString(2).padStart(32, "0");
   if (!/^1*0*$/.test(bits)) return undefined;
   return bits.indexOf("0") === -1 ? 32 : bits.indexOf("0");
+}
+
+function parseNetworkToken(value: string | undefined): { network: string; prefixLength: number } | undefined {
+  if (!value || value.toLowerCase() === "any") return value ? { network: "0.0.0.0", prefixLength: 0 } : undefined;
+  const [network, prefix] = value.split("/");
+  const prefixLength = prefixFrom(prefix ?? "32");
+  return network && ipv4ToInteger(network) !== undefined && prefixLength !== undefined
+    ? { network, prefixLength }
+    : undefined;
 }
 
 function renderCliConfig(config: DeviceRuntimeConfig, device: NetworkDevice): string {

@@ -25,6 +25,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { deviceRegistry } from "@/data/device-catalog";
 import { IpConfigurationPanel } from "@/components/inspector/ip-configuration-panel";
 import { RoutingConfigurationPanel } from "@/components/inspector/routing-configuration-panel";
+import { ServicesConfigurationPanel } from "@/components/inspector/services-configuration-panel";
 import { SwitchingConfigurationPanel } from "@/components/inspector/switching-configuration-panel";
 import {
   CliConfigurationPanel,
@@ -89,6 +90,12 @@ export function DeviceInspector() {
   const inspectorTabs = Array.from(
     new Set([
       ...(definition?.inspectorTabs ?? ["overview", "interfaces"]),
+      ...(device.category === "router" ||
+      device.category === "security" ||
+      device.category === "server" ||
+      device.capabilities.some((capability) => ["dhcp", "dns", "nat", "acl", "services"].includes(capability))
+        ? ["services"]
+        : []),
       "configuration",
       "cli",
       "raw-config",
@@ -263,6 +270,12 @@ export function DeviceInspector() {
             </TabsContent>
           )}
 
+          {inspectorTabs.includes("services") && (
+            <TabsContent value="services" className="mt-0">
+              <ServicesConfigurationPanel key={device.id} device={device} />
+            </TabsContent>
+          )}
+
           <TabsContent value="configuration" className="mt-0">
             <ConfigurationStatusPanel device={device} />
           </TabsContent>
@@ -294,6 +307,7 @@ export function DeviceInspector() {
                   "ip",
                   "vlan",
                   "routing",
+                  "services",
                   "configuration",
                   "cli",
                   "raw-config",

@@ -67,7 +67,7 @@ export const CABLE_TYPES = [
   "sd-wan",
 ] as const;
 
-export const CURRENT_PROJECT_SCHEMA_VERSION = 5;
+export const CURRENT_PROJECT_SCHEMA_VERSION = 6;
 
 export type DeviceCategory = (typeof DEVICE_CATEGORIES)[number];
 export type DeviceStatus =
@@ -252,6 +252,138 @@ export interface RoutingRuntimeConfig {
   svis: Record<string, SviRuntimeConfig>;
 }
 
+export interface DhcpExcludedRange {
+  start: string;
+  end: string;
+}
+
+export interface DhcpReservation {
+  ipAddress: string;
+  clientIdentifier: string;
+  description?: string;
+}
+
+export interface DhcpPoolRuntimeConfig {
+  name: string;
+  network: string;
+  prefixLength: number;
+  defaultGateway: string;
+  dnsServers: string[];
+  domainName?: string;
+  leaseSeconds: number;
+  maximumLeases?: number;
+  excludedRanges: DhcpExcludedRange[];
+  reservations: DhcpReservation[];
+  relayAddresses: string[];
+}
+
+export interface DhcpServiceRuntimeConfig {
+  enabled: boolean;
+  pools: Record<string, DhcpPoolRuntimeConfig>;
+}
+
+export type DnsRecordType = "A" | "AAAA" | "CNAME" | "MX" | "PTR" | "TXT" | "NS";
+
+export interface DnsRecordRuntimeConfig {
+  id: string;
+  name: string;
+  type: DnsRecordType;
+  value: string;
+  ttl: number;
+  priority?: number;
+}
+
+export interface DnsZoneRuntimeConfig {
+  name: string;
+  authoritative: boolean;
+  reverse: boolean;
+  records: DnsRecordRuntimeConfig[];
+}
+
+export interface DnsServiceRuntimeConfig {
+  enabled: boolean;
+  recursive: boolean;
+  forwarders: string[];
+  cacheTtlSeconds: number;
+  zones: Record<string, DnsZoneRuntimeConfig>;
+}
+
+export type NatRuleType = "static" | "dynamic" | "pat" | "source" | "destination" | "port-forward" | "exemption";
+
+export interface NatPoolRuntimeConfig {
+  name: string;
+  startAddress: string;
+  endAddress: string;
+  prefixLength: number;
+}
+
+export interface NatRuleRuntimeConfig {
+  id: string;
+  order: number;
+  enabled: boolean;
+  type: NatRuleType;
+  source: string;
+  sourcePrefixLength: number;
+  destination: string;
+  destinationPrefixLength: number;
+  translatedAddress?: string;
+  poolName?: string;
+  insideInterfaceId?: string;
+  outsideInterfaceId?: string;
+  protocol?: "ip" | "tcp" | "udp" | "icmp";
+  originalPort?: number;
+  translatedPort?: number;
+}
+
+export interface NatServiceRuntimeConfig {
+  enabled: boolean;
+  translationTimeoutSeconds: number;
+  pools: Record<string, NatPoolRuntimeConfig>;
+  rules: NatRuleRuntimeConfig[];
+}
+
+export type AclProtocol = "ip" | "icmp" | "tcp" | "udp";
+
+export interface AclRuleRuntimeConfig {
+  sequence: number;
+  action: "permit" | "deny";
+  protocol: AclProtocol;
+  source: string;
+  sourcePrefixLength: number;
+  destination: string;
+  destinationPrefixLength: number;
+  sourcePort?: number;
+  destinationPort?: number;
+  logging: boolean;
+  remark?: string;
+}
+
+export interface AccessListRuntimeConfig {
+  name: string;
+  type: "standard" | "extended";
+  number?: number;
+  rules: AclRuleRuntimeConfig[];
+}
+
+export interface AclAssignmentRuntimeConfig {
+  interfaceId: string;
+  direction: "in" | "out";
+  aclName: string;
+}
+
+export interface AclServiceRuntimeConfig {
+  enabled: boolean;
+  accessLists: Record<string, AccessListRuntimeConfig>;
+  assignments: AclAssignmentRuntimeConfig[];
+}
+
+export interface ServicesRuntimeConfig {
+  dhcp: DhcpServiceRuntimeConfig;
+  dns: DnsServiceRuntimeConfig;
+  nat: NatServiceRuntimeConfig;
+  acl: AclServiceRuntimeConfig;
+}
+
 export interface DeviceRuntimeConfig {
   system: {
     hostname: string;
@@ -263,7 +395,7 @@ export interface DeviceRuntimeConfig {
   interfaces: Record<string, InterfaceRuntimeConfig>;
   switching?: SwitchingRuntimeConfig;
   routing: RoutingRuntimeConfig;
-  services: Record<string, { enabled: boolean; port?: number }>;
+  services: ServicesRuntimeConfig;
 }
 
 export interface ConfigurationValidationResult {
@@ -313,7 +445,10 @@ export interface ProjectConfigurationState {
       | "STP_CHANGED"
       | "ETHERCHANNEL_CHANGED"
       | "ROUTE_ADDED"
-      | "ROUTE_REMOVED";
+      | "ROUTE_REMOVED"
+      | "SERVICE_CHANGED"
+      | "ACL_CHANGED"
+      | "NAT_CHANGED";
     source: ConfigurationSource;
     message: string;
     revisionId?: string;

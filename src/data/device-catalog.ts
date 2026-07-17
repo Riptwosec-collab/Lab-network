@@ -448,7 +448,9 @@ export class DeviceRegistry {
     const definition = this.get(type);
     if (!definition) throw new Error(`Unknown device type: ${type}`);
     const now = new Date().toISOString();
-    const suffix = nanoid(4).toUpperCase();
+    const suffix = nanoid(4)
+      .replace(/[^a-zA-Z0-9]/g, "0")
+      .toUpperCase();
     return {
       id: nanoid(),
       type: definition.type,

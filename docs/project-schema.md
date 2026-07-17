@@ -4,7 +4,7 @@ Project ใช้ `schemaVersion` สำหรับ migration ของ persist
 
 ```json
 {
-  "schemaVersion": 5,
+  "schemaVersion": 6,
   "project": { "id": "...", "name": "...", "canvasSettings": {}, "simulationSettings": {} },
   "devices": [],
   "connections": [],
@@ -36,5 +36,7 @@ Schema v3 เพิ่ม `configurationState` ซึ่งเก็บ running/
 Schema v4 เพิ่ม switching runtime config: VLAN database, switchport access/trunk/native/allowed VLAN, STP, static MAC และ EtherChannel/LACP Migration เติม VLAN 1 กับ switchport defaults ให้ switch จากโปรเจกต์ v1–v3 และ Dexie v4 อัปเดตทั้ง project snapshots กับ version history โดยคง topology เดิม
 
 Schema v5 เพิ่ม `ipRouting`, static/default routes พร้อม administrative distance/metric และ SVI configuration Migration เติม routing defaults ให้ revision และ project จาก v1–v4 ส่วน Dexie v5 อัปเดต project กับ version snapshots โดยไม่ลบข้อมูลเดิม
+
+Schema v6 เพิ่ม typed `services` configuration สำหรับ DHCP pools, DNS zones/records, NAT/PAT rules และ ordered ACL/interface assignments โดย Dexie v6 migrate ทั้ง projects และ version snapshots ผ่าน pipeline เดิม Dynamic lease, DNS cache และ NAT translation เป็น simulation runtime state จึงไม่ถูกบันทึกเป็น startup config
 
 เมื่อเพิ่ม schema version ให้เพิ่ม migration แบบ pure function จาก N ไป N+1 และเก็บ fixture ของเวอร์ชันเดิมไว้ทดสอบ ห้าม mutate raw data ระหว่าง migration

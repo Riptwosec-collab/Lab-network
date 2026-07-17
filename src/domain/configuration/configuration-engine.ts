@@ -1,6 +1,12 @@
 import { nanoid } from "nanoid";
 
 import { analyzeIPv4, ipv4ToInteger } from "@/engine/protocols/ipv4";
+import {
+  createServicesRuntimeConfig,
+  normalizeServicesRuntimeConfig,
+  renderServicesRunningConfig,
+  validateServicesRuntimeConfig,
+} from "@/domain/configuration/services-configuration";
 import type {
   ConfigurationSource,
   ConfigurationValidationResult,
@@ -67,7 +73,7 @@ export function createDeviceRuntimeConfig(device: NetworkDevice): DeviceRuntimeC
         }
       : undefined,
     routing: { ipRouting: supportsRouting, staticRoutes: [], svis: {} },
-    services: {},
+    services: createServicesRuntimeConfig(),
   };
 }
 
@@ -144,6 +150,7 @@ function normalizeDeviceConfigurationState(
       })),
       svis: { ...defaults.routing.svis, ...config.routing?.svis },
     },
+    services: normalizeServicesRuntimeConfig(config.services),
   });
   return {
     ...current,
@@ -276,6 +283,7 @@ export function validateRuntimeConfig(
     if (sviAddresses.has(svi.ipv4)) issues.push({ path: `${path}.ipv4`, message: "SVI IPv4 ซ้ำในอุปกรณ์" });
     sviAddresses.add(svi.ipv4);
   }
+  issues.push(...validateServicesRuntimeConfig(device, config.services));
   return { valid: issues.length === 0, issues };
 }
 
@@ -413,6 +421,8 @@ export function diffConfiguration(before: DeviceRuntimeConfig, after: DeviceRunt
   if (JSON.stringify(before.switching) !== JSON.stringify(after.switching))
     changes.push("switching configuration modified");
   if (JSON.stringify(before.routing) !== JSON.stringify(after.routing)) changes.push("routing configuration modified");
+  if (JSON.stringify(before.services) !== JSON.stringify(after.services))
+    changes.push("services configuration modified");
   return changes.length ? changes : ["No effective configuration changes"];
 }
 
@@ -437,6 +447,7 @@ export function renderRunningConfig(config: DeviceRuntimeConfig, device: Network
   for (const route of config.routing.staticRoutes) {
     lines.push(`ip route ${route.destination}/${route.prefixLength} ${route.nextHop} ${route.administrativeDistance}`);
   }
+  lines.push(...renderServicesRunningConfig(config.services));
   for (const networkInterface of device.interfaces) {
     const item = config.interfaces[networkInterface.id];
     if (!item) continue;

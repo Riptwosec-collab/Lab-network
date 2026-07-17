@@ -2,6 +2,7 @@ import { ArpCache, type ArpEntry } from "@/engine/protocols/arp-cache";
 import { analyzeIPv4, isAddressInSubnet, validateTopologyIPv4 } from "@/engine/protocols/ipv4";
 import { Layer2Engine, type Layer2FailureCode, type Layer2TraceResult } from "@/engine/protocols/layer2-engine";
 import { IPv4RoutingEngine, type RoutingFailureCode, type RoutingTraceResult } from "@/engine/protocols/routing-engine";
+import { NetworkServicesEngine, type PacketPolicyResult } from "@/engine/protocols/services-engine";
 import type { NetworkConnection, NetworkDevice, NetworkInterface, TopologySnapshot } from "@/types/network";
 
 export type PingFailureCode =
@@ -12,12 +13,13 @@ export type PingFailureCode =
   | "INTERFACE_DOWN"
   | "DESTINATION_UNREACHABLE"
   | "LINK_DOWN"
+  | "ACL_DENY"
   | "ROUTING_NOT_SUPPORTED"
   | Layer2FailureCode
   | RoutingFailureCode;
 
 export type PingStepKind =
-  "validation" | "layer2" | "routing" | "arp-request" | "arp-reply" | "icmp-request" | "icmp-reply";
+  "validation" | "layer2" | "routing" | "policy" | "arp-request" | "arp-reply" | "icmp-request" | "icmp-reply";
 
 export interface PingTimelineStep {
   readonly id: string;
@@ -48,6 +50,8 @@ export interface PingResult {
   readonly layer2?: Layer2TraceResult;
   readonly routing?: RoutingTraceResult;
   readonly returnRouting?: RoutingTraceResult;
+  readonly policy?: PacketPolicyResult;
+  readonly returnPolicy?: PacketPolicyResult;
 }
 
 interface InterfaceOwner {
@@ -80,6 +84,7 @@ export class IPv4PingEngine {
       destination?: InterfaceOwner,
       layer2?: Layer2TraceResult,
       routing?: RoutingTraceResult,
+      policy?: PacketPolicyResult,
     ): PingResult => ({
       success: false,
       sourceDeviceId: request.sourceDeviceId,
@@ -93,6 +98,7 @@ export class IPv4PingEngine {
       arpEntries: this.arpCache.list(now),
       layer2,
       routing,
+      policy,
     });
 
     const sourceDevice = this.topology.devices.find((device) => device.id === request.sourceDeviceId);
@@ -207,6 +213,53 @@ export class IPv4PingEngine {
           routing,
         );
       }
+      const services = new NetworkServicesEngine(this.topology);
+      const policy = services.evaluateRoutedPacket(
+        routing,
+        { sourceIp: sourceInfo.address, destinationIp: request.destinationIp, protocol: "icmp" },
+        new Date(now),
+      );
+      for (const evaluation of policy.aclEvaluations) {
+        step(
+          "policy",
+          evaluation.action === "permit" ? "success" : "failure",
+          `${evaluation.hostname} ${evaluation.aclName} ${evaluation.direction}`,
+          `${evaluation.ruleSequence ?? "implicit"} ${evaluation.action}: ${evaluation.reason}`,
+        );
+      }
+      policy.natTranslations.forEach((translation) =>
+        step(
+          "policy",
+          "success",
+          `${translation.type.toUpperCase()} translation`,
+          `${translation.insideLocal} → ${translation.insideGlobal}`,
+        ),
+      );
+      if (!policy.permitted)
+        return fail("ACL_DENY", policy.reason, source, destination, routing.layer2Segments.at(-1), routing, policy);
+      const returnPolicy = services.evaluateRoutedPacket(
+        returnRouting,
+        { sourceIp: request.destinationIp, destinationIp: sourceInfo.address, protocol: "icmp" },
+        new Date(now),
+      );
+      for (const evaluation of returnPolicy.aclEvaluations) {
+        step(
+          "policy",
+          evaluation.action === "permit" ? "success" : "failure",
+          `Return ${evaluation.hostname} ${evaluation.aclName} ${evaluation.direction}`,
+          `${evaluation.ruleSequence ?? "implicit"} ${evaluation.action}: ${evaluation.reason}`,
+        );
+      }
+      if (!returnPolicy.permitted)
+        return fail(
+          "ACL_DENY",
+          `Return path: ${returnPolicy.reason}`,
+          source,
+          destination,
+          returnRouting.layer2Segments.at(-1),
+          routing,
+          returnPolicy,
+        );
       const gateway = routingEngine.findInterfaceByIp(sourceGateway);
       if (gateway) {
         const gatewayMac = gateway.networkInterface.macAddress ?? deriveMacAddress(gateway.networkInterface.id);
@@ -275,6 +328,8 @@ export class IPv4PingEngine {
         layer2: routing.layer2Segments.at(-1),
         routing,
         returnRouting,
+        policy,
+        returnPolicy,
       };
     }
 

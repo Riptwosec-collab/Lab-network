@@ -42,7 +42,7 @@ describe("device foundation", () => {
       }),
     };
     const migrated = projectSchema.parse(migrateProject(legacy));
-    expect(migrated.schemaVersion).toBe(5);
+    expect(migrated.schemaVersion).toBe(6);
     expect(Object.keys(migrated.configurationState.devices)).toHaveLength(demo.devices.length);
     const migratedSwitch = migrated.devices.find((device) => device.category === "switch")!;
     expect(migrated.configurationState.devices[migratedSwitch.id]?.runningConfig.switching?.vlans["1"]).toBeDefined();

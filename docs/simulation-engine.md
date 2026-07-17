@@ -29,11 +29,19 @@ Engine มี lifecycle (`start`, `pause`, `stop`, `reset`, `step`, `setSpeed`),
 - Inter-VLAN routing ใช้ SVI ของ Layer 3 switch และ Layer 2 VLAN path เดิม จึงยังถูก access/trunk/STP rules บังคับ
 - Lab Validator ของ Inter-VLAN ตรวจ SVI, `ip routing` และผล Cross-subnet Ping จริง
 
+## Network Services
+
+- `NetworkServicesEngine` เก็บ DHCP leases, DNS cache, NAT translations และ ACL hit counters ของ simulation session
+- DHCP ใช้ DORA/renew/release/expiry จริง และ ACK สามารถ materialize IPv4, gateway และ DNS ลง client running config
+- DNS query ใช้ DNS server ที่ client ตั้งไว้ ตรวจ topology reachability, authoritative zone, TTL cache, NXDOMAIN และ timeout
+- Routed ICMP ตรวจ outbound ACL ตาม sequence พร้อม implicit deny ทั้ง forward/return path แล้วใช้ NAT/PAT rule แรกที่ match
+- `PingResult` ส่งคืน policy evaluations และ translation table พร้อม timeline ที่ระบุ device, interface, direction, ACL/rule และ translated address
+
 ## Roadmap ถัดไป
 
 1. deterministic simulation clock และ seeded randomness
 2. device/protocol registries
-3. IPv6, DHCP/DNS, ACL/NAT
+3. IPv6 and dynamic routing protocols
 4. packet animation, performance stats และ replay
 
 Worker รับ INIT/LOAD/PING/START/PAUSE/STOP/STEP/RESET/UPDATE และตอบ READY/TOPOLOGY_LOADED/PING_RESULT/STATE/EVENT/ERROR/STATS ทุก message ต้อง serializable และ versioned ก่อนเปิด protocol plugins ภายนอก

@@ -65,6 +65,13 @@ export function applyDeviceConfiguration(
           : "ROUTE_REMOVED";
       appendAudit(deviceId, eventType, source, `Updated routing table on ${nextDevice.hostname}`);
     }
+    if (JSON.stringify(currentState.runningConfig.services) !== JSON.stringify(candidate.services)) {
+      appendAudit(deviceId, "SERVICE_CHANGED", source, `Updated services on ${nextDevice.hostname}`);
+      if (JSON.stringify(currentState.runningConfig.services.acl) !== JSON.stringify(candidate.services.acl))
+        appendAudit(deviceId, "ACL_CHANGED", source, `Updated ACL policy on ${nextDevice.hostname}`);
+      if (JSON.stringify(currentState.runningConfig.services.nat) !== JSON.stringify(candidate.services.nat))
+        appendAudit(deviceId, "NAT_CHANGED", source, `Updated NAT policy on ${nextDevice.hostname}`);
+    }
   } else {
     appendAudit(deviceId, "CONFIG_CHANGED", source, "Configuration validation failed");
   }
@@ -184,7 +191,10 @@ function appendAudit(
     | "STP_CHANGED"
     | "ETHERCHANNEL_CHANGED"
     | "ROUTE_ADDED"
-    | "ROUTE_REMOVED",
+    | "ROUTE_REMOVED"
+    | "SERVICE_CHANGED"
+    | "ACL_CHANGED"
+    | "NAT_CHANGED",
   source: ConfigurationSource,
   message: string,
   revisionId?: string,

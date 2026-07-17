@@ -39,6 +39,19 @@ export const labs: readonly LabDefinition[] = [
     "สร้าง DHCP pool",
     "ยืนยันว่า client ได้รับ lease",
   ]),
+  makeLab(
+    "dns",
+    "Authoritative DNS",
+    "Intermediate",
+    "ปานกลาง",
+    30,
+    "สร้าง authoritative zone และให้ client resolve ชื่อผ่าน DNS server จริง",
+    ["เปิด DNS และสร้าง A record ใน authoritative zone", "ตั้ง DNS server ที่ client และ query ให้สำเร็จ"],
+  ),
+  makeLab("nat-acl", "Edge NAT and ACL", "Advanced", "ยาก", 45, "ควบคุม routed packet ด้วย NAT/PAT และ ordered ACL", [
+    "สร้าง active NAT หรือ PAT rule",
+    "สร้าง ACL และผูก inbound หรือ outbound กับ interface",
+  ]),
   makeLab("vlan", "VLAN Basics", "Intermediate", "ปานกลาง", 35, "แบ่งแผนกออกเป็น VLAN บนสวิตช์เดียว", [
     "สร้าง VLAN 10 และ 20",
     "กำหนด access port ให้ถูกต้อง",

@@ -152,3 +152,35 @@ test("adds a static route and exposes it through the CLI and routing table", asy
   await expect(page.getByLabel("Educational CLI output")).toContainText("10.20.0.0/16");
   expect(errors).toEqual([]);
 });
+
+test("configures NAT and ordered ACL services on a firewall", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") errors.push(message.text());
+  });
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.goto("/workspace?project=demo-project");
+  const firewallNode = page.locator(".react-flow__node").filter({ hasText: "firewall-" });
+  await firewallNode.dispatchEvent("click");
+  await page.getByRole("tab", { name: "services" }).click();
+
+  await page.getByLabel("NAT source", { exact: true }).fill("192.168.1.0");
+  await page.getByLabel("NAT source prefix", { exact: true }).fill("24");
+  await page.getByLabel("NAT translated address").fill("203.0.113.10");
+  await page.getByRole("button", { name: "Add NAT rule" }).click();
+  await expect(page.getByText(/pat 192\.168\.1\.0\/24/)).toBeVisible();
+
+  await page.getByLabel("ACL name").fill("EDGE");
+  await page.getByLabel("ACL sequence").fill("10");
+  await page.getByRole("button", { name: "Add / replace ACL rule" }).click();
+  await page.getByRole("button", { name: "Apply ACL to interface" }).click();
+  await expect(page.getByText(/EDGE 10 permit icmp/)).toBeVisible();
+  await expect(page.getByText(/out · EDGE/)).toBeVisible();
+
+  await page.getByRole("tab", { name: "cli" }).click();
+  const command = page.getByRole("textbox", { name: "CLI command", exact: true });
+  await command.fill("show access-lists");
+  await command.press("Enter");
+  await expect(page.getByLabel("Educational CLI output")).toContainText("EDGE");
+  expect(errors).toEqual([]);
+});

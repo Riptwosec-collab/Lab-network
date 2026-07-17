@@ -183,10 +183,122 @@ export const deviceRuntimeConfigSchema = z.object({
       )
       .default({}),
   }),
-  services: z.record(
-    z.string(),
-    z.object({ enabled: z.boolean(), port: z.number().int().min(1).max(65535).optional() }),
-  ),
+  services: z.object({
+    dhcp: z.object({
+      enabled: z.boolean(),
+      pools: z.record(
+        z.string(),
+        z.object({
+          name: z.string().min(1).max(64),
+          network: z.string(),
+          prefixLength: z.number().int().min(0).max(32),
+          defaultGateway: z.string(),
+          dnsServers: z.array(z.string()),
+          domainName: z.string().max(253).optional(),
+          leaseSeconds: z.number().int().positive(),
+          maximumLeases: z.number().int().positive().optional(),
+          excludedRanges: z.array(z.object({ start: z.string(), end: z.string() })),
+          reservations: z.array(
+            z.object({
+              ipAddress: z.string(),
+              clientIdentifier: z.string().min(1),
+              description: z.string().max(240).optional(),
+            }),
+          ),
+          relayAddresses: z.array(z.string()),
+        }),
+      ),
+    }),
+    dns: z.object({
+      enabled: z.boolean(),
+      recursive: z.boolean(),
+      forwarders: z.array(z.string()),
+      cacheTtlSeconds: z.number().int().positive(),
+      zones: z.record(
+        z.string(),
+        z.object({
+          name: z.string().min(1).max(253),
+          authoritative: z.boolean(),
+          reverse: z.boolean(),
+          records: z.array(
+            z.object({
+              id: z.string().min(1),
+              name: z.string().min(1).max(253),
+              type: z.enum(["A", "AAAA", "CNAME", "MX", "PTR", "TXT", "NS"]),
+              value: z.string().min(1),
+              ttl: z.number().int().positive(),
+              priority: z.number().int().nonnegative().optional(),
+            }),
+          ),
+        }),
+      ),
+    }),
+    nat: z.object({
+      enabled: z.boolean(),
+      translationTimeoutSeconds: z.number().int().positive(),
+      pools: z.record(
+        z.string(),
+        z.object({
+          name: z.string().min(1).max(64),
+          startAddress: z.string(),
+          endAddress: z.string(),
+          prefixLength: z.number().int().min(0).max(32),
+        }),
+      ),
+      rules: z.array(
+        z.object({
+          id: z.string().min(1),
+          order: z.number().int().nonnegative(),
+          enabled: z.boolean(),
+          type: z.enum(["static", "dynamic", "pat", "source", "destination", "port-forward", "exemption"]),
+          source: z.string(),
+          sourcePrefixLength: z.number().int().min(0).max(32),
+          destination: z.string(),
+          destinationPrefixLength: z.number().int().min(0).max(32),
+          translatedAddress: z.string().optional(),
+          poolName: z.string().optional(),
+          insideInterfaceId: z.string().optional(),
+          outsideInterfaceId: z.string().optional(),
+          protocol: z.enum(["ip", "tcp", "udp", "icmp"]).optional(),
+          originalPort: z.number().int().min(1).max(65535).optional(),
+          translatedPort: z.number().int().min(1).max(65535).optional(),
+        }),
+      ),
+    }),
+    acl: z.object({
+      enabled: z.boolean(),
+      accessLists: z.record(
+        z.string(),
+        z.object({
+          name: z.string().min(1).max(64),
+          type: z.enum(["standard", "extended"]),
+          number: z.number().int().min(1).max(2699).optional(),
+          rules: z.array(
+            z.object({
+              sequence: z.number().int().nonnegative(),
+              action: z.enum(["permit", "deny"]),
+              protocol: z.enum(["ip", "icmp", "tcp", "udp"]),
+              source: z.string(),
+              sourcePrefixLength: z.number().int().min(0).max(32),
+              destination: z.string(),
+              destinationPrefixLength: z.number().int().min(0).max(32),
+              sourcePort: z.number().int().min(1).max(65535).optional(),
+              destinationPort: z.number().int().min(1).max(65535).optional(),
+              logging: z.boolean(),
+              remark: z.string().max(240).optional(),
+            }),
+          ),
+        }),
+      ),
+      assignments: z.array(
+        z.object({
+          interfaceId: z.string().min(1),
+          direction: z.enum(["in", "out"]),
+          aclName: z.string().min(1),
+        }),
+      ),
+    }),
+  }),
 });
 
 const configurationValidationResultSchema = z.object({
@@ -238,6 +350,9 @@ export const projectConfigurationStateSchema = z.object({
         "ETHERCHANNEL_CHANGED",
         "ROUTE_ADDED",
         "ROUTE_REMOVED",
+        "SERVICE_CHANGED",
+        "ACL_CHANGED",
+        "NAT_CHANGED",
       ]),
       source: z.enum(["form", "cli", "raw", "import", "template", "lab-solution", "system"]),
       message: z.string(),

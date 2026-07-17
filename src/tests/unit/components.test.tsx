@@ -51,8 +51,12 @@ describe("workspace components", () => {
     expect(screen.getByRole("tab", { name: "cli" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "raw-config" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "history" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "services" })).toBeInTheDocument();
     expect(screen.getByDisplayValue(device.hostname)).toBeInTheDocument();
     await user.click(screen.getByRole("tab", { name: "routing" }));
     expect(screen.getByText("Static / default route")).toBeInTheDocument();
+    await user.click(screen.getByRole("tab", { name: "services" }));
+    expect(screen.getByText("DHCP pools")).toBeInTheDocument();
+    expect(screen.getByText("Ordered ACL policy")).toBeInTheDocument();
   });
 });

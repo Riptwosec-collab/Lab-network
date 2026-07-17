@@ -66,6 +66,33 @@ describe("configuration engine", () => {
     );
   });
 
+  it("rejects overlapping DHCP pools and invalid service addresses", () => {
+    const device = deviceRegistry.create("dhcp-server");
+    const state = createDeviceConfigurationState(device);
+    const candidate = structuredClone(state.runningConfig);
+    candidate.services.dhcp.enabled = true;
+    candidate.services.dhcp.pools.A = {
+      name: "A",
+      network: "10.10.0.0",
+      prefixLength: 24,
+      defaultGateway: "10.10.0.1",
+      dnsServers: ["10.10.0.53"],
+      leaseSeconds: 3600,
+      excludedRanges: [],
+      reservations: [],
+      relayAddresses: [],
+    };
+    candidate.services.dhcp.pools.B = {
+      ...candidate.services.dhcp.pools.A,
+      name: "B",
+      network: "10.10.0.128",
+      prefixLength: 25,
+    };
+    const result = applyConfiguration(state, device, candidate, "form");
+    expect(result.nextState.validationResult.valid).toBe(false);
+    expect(result.nextState.validationResult.issues.some((issue) => issue.message.includes("ซ้อนทับ"))).toBe(true);
+  });
+
   it("saves running config independently as startup config", () => {
     const project = createDemoProject();
     const device = project.devices[0]!;
@@ -158,6 +185,38 @@ describe("structured CLI engine", () => {
       prefixLength: 24,
       enabled: true,
     });
+  });
+
+  it("configures DHCP, NAT and an ordered ACL through real CLI commands", () => {
+    let router = deviceRegistry.create("branch-router");
+    let state = createDeviceConfigurationState(router);
+    const context: CliContext = { mode: "global-config" };
+    const dhcp = executeCliCommand("ip dhcp pool LAN 10.20.0.0 24 10.20.0.1 10.20.0.53", context, router, state);
+    ({ nextDevice: router, nextState: state } = applyConfiguration(state, router, dhcp.nextConfig!, "cli"));
+    const nat = executeCliCommand("ip nat inside source static 10.20.0.10 203.0.113.10", context, router, state);
+    ({ nextDevice: router, nextState: state } = applyConfiguration(state, router, nat.nextConfig!, "cli"));
+    const acl = executeCliCommand("access-list EDGE 10 permit icmp 10.20.0.0/24 any log", context, router, state);
+    ({ nextDevice: router, nextState: state } = applyConfiguration(state, router, acl.nextConfig!, "cli"));
+    const interfaceContext = executeCliCommand(
+      `interface ${router.interfaces[0]!.name}`,
+      context,
+      router,
+      state,
+    ).context;
+    const assignment = executeCliCommand("ip access-group EDGE out", interfaceContext, router, state);
+
+    expect(assignment.nextConfig?.services.dhcp.pools.LAN).toMatchObject({ network: "10.20.0.0" });
+    expect(assignment.nextConfig?.services.nat.rules[0]).toMatchObject({ type: "static" });
+    expect(assignment.nextConfig?.services.acl.accessLists.EDGE.rules[0]).toMatchObject({
+      sequence: 10,
+      action: "permit",
+    });
+    expect(assignment.nextConfig?.services.acl.assignments[0]).toMatchObject({
+      aclName: "EDGE",
+      direction: "out",
+    });
+    const shown = executeCliCommand("show access-lists", { mode: "privileged" }, router, state);
+    expect(shown.output.join("\n")).toContain("EDGE");
   });
 });
 
