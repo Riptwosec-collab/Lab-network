@@ -1,11 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronDown, CircleDot, DatabaseZap, FlaskConical, Info, Network, Radio } from "lucide-react";
+import { ChevronDown, CircleDot, DatabaseZap, FlaskConical, Info, Network, Radio, ShieldCheck } from "lucide-react";
 
 import { LabValidationPanel } from "@/components/learning/lab-validation-panel";
 import { PingTool } from "@/components/simulation/ping-tool";
 import { ServicesTool } from "@/components/simulation/services-tool";
+import { SecurityTool } from "@/components/simulation/security-tool";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -13,7 +14,7 @@ import { useProjectStore } from "@/stores/project-store";
 import { useTopologyStore } from "@/stores/topology-store";
 import { useWorkspaceStore } from "@/stores/workspace-store";
 
-type BottomPanelTab = "status" | "ping" | "services" | "validator";
+type BottomPanelTab = "status" | "ping" | "services" | "security" | "validator";
 
 export function BottomPanel() {
   const [activeTab, setActiveTab] = useState<BottomPanelTab>("status");
@@ -62,6 +63,19 @@ export function BottomPanel() {
         <button
           className={cn(
             "flex h-9 items-center gap-2 border-b-2 px-2 text-xs",
+            activeTab === "security" ? "border-primary text-primary" : "text-muted-foreground border-transparent",
+          )}
+          onClick={() => selectTab("security")}
+          aria-pressed={activeTab === "security"}
+        >
+          <ShieldCheck className="size-3.5" /> Security
+          <Badge variant="success" className="px-1.5 py-0 text-[8px]">
+            LIVE
+          </Badge>
+        </button>
+        <button
+          className={cn(
+            "flex h-9 items-center gap-2 border-b-2 px-2 text-xs",
             activeTab === "validator" ? "border-primary text-primary" : "text-muted-foreground border-transparent",
           )}
           onClick={() => selectTab("validator")}
@@ -97,6 +111,7 @@ export function BottomPanel() {
       </div>
       {open && activeTab === "ping" && <PingTool />}
       {open && activeTab === "services" && <ServicesTool />}
+      {open && activeTab === "security" && <SecurityTool />}
       {open && activeTab === "validator" && <LabValidationPanel />}
       {open && activeTab === "status" && (
         <div className="border-border bg-background/55 grid min-h-24 gap-3 border-t p-3 sm:grid-cols-[1fr_1fr_1.4fr]">

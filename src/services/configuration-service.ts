@@ -72,6 +72,16 @@ export function applyDeviceConfiguration(
       if (JSON.stringify(currentState.runningConfig.services.nat) !== JSON.stringify(candidate.services.nat))
         appendAudit(deviceId, "NAT_CHANGED", source, `Updated NAT policy on ${nextDevice.hostname}`);
     }
+    if (JSON.stringify(currentState.runningConfig.security) !== JSON.stringify(candidate.security)) {
+      if (JSON.stringify(currentState.runningConfig.security.firewall) !== JSON.stringify(candidate.security.firewall))
+        appendAudit(deviceId, "FIREWALL_CHANGED", source, `Updated firewall policy on ${nextDevice.hostname}`);
+      if (JSON.stringify(currentState.runningConfig.security.vpn) !== JSON.stringify(candidate.security.vpn))
+        appendAudit(deviceId, "VPN_CHANGED", source, `Updated VPN configuration on ${nextDevice.hostname}`);
+      if (JSON.stringify(currentState.runningConfig.security.wireless) !== JSON.stringify(candidate.security.wireless))
+        appendAudit(deviceId, "WIRELESS_CHANGED", source, `Updated wireless configuration on ${nextDevice.hostname}`);
+      if (JSON.stringify(currentState.runningConfig.security.radius) !== JSON.stringify(candidate.security.radius))
+        appendAudit(deviceId, "RADIUS_CHANGED", source, `Updated RADIUS configuration on ${nextDevice.hostname}`);
+    }
   } else {
     appendAudit(deviceId, "CONFIG_CHANGED", source, "Configuration validation failed");
   }
@@ -194,7 +204,11 @@ function appendAudit(
     | "ROUTE_REMOVED"
     | "SERVICE_CHANGED"
     | "ACL_CHANGED"
-    | "NAT_CHANGED",
+    | "NAT_CHANGED"
+    | "FIREWALL_CHANGED"
+    | "VPN_CHANGED"
+    | "WIRELESS_CHANGED"
+    | "RADIUS_CHANGED",
   source: ConfigurationSource,
   message: string,
   revisionId?: string,

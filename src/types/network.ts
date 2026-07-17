@@ -67,7 +67,7 @@ export const CABLE_TYPES = [
   "sd-wan",
 ] as const;
 
-export const CURRENT_PROJECT_SCHEMA_VERSION = 6;
+export const CURRENT_PROJECT_SCHEMA_VERSION = 7;
 
 export type DeviceCategory = (typeof DEVICE_CATEGORIES)[number];
 export type DeviceStatus =
@@ -384,6 +384,121 @@ export interface ServicesRuntimeConfig {
   acl: AclServiceRuntimeConfig;
 }
 
+export interface FirewallZoneRuntimeConfig {
+  name: string;
+  interfaceIds: string[];
+}
+
+export interface FirewallAddressObjectRuntimeConfig {
+  name: string;
+  network: string;
+  prefixLength: number;
+}
+
+export interface FirewallServiceObjectRuntimeConfig {
+  name: string;
+  protocol: "ip" | "icmp" | "tcp" | "udp";
+  ports: number[];
+}
+
+export interface FirewallPolicyRuntimeConfig {
+  id: string;
+  order: number;
+  enabled: boolean;
+  name: string;
+  sourceZone: string;
+  destinationZone: string;
+  sourceAddress: string;
+  destinationAddress: string;
+  service: string;
+  application?: string;
+  action: "allow" | "deny";
+  logging: boolean;
+  schedule?: string;
+}
+
+export interface FirewallRuntimeConfig {
+  enabled: boolean;
+  zones: Record<string, FirewallZoneRuntimeConfig>;
+  addressObjects: Record<string, FirewallAddressObjectRuntimeConfig>;
+  serviceObjects: Record<string, FirewallServiceObjectRuntimeConfig>;
+  policies: FirewallPolicyRuntimeConfig[];
+  sessionTimeoutSeconds: number;
+  natOrder: "before-policy" | "after-policy";
+}
+
+export interface VpnTunnelRuntimeConfig {
+  id: string;
+  name: string;
+  type: "site-to-site" | "remote-access" | "gre" | "ipsec";
+  enabled: boolean;
+  localPeer: string;
+  remotePeer: string;
+  localNetwork: string;
+  localPrefixLength: number;
+  remoteNetwork: string;
+  remotePrefixLength: number;
+  preSharedKey?: string;
+  encryption: "aes128" | "aes256" | "3des" | "none";
+  hash: "sha1" | "sha256" | "sha384" | "none";
+  ikeVersion: "ikev1" | "ikev2" | "none";
+  lifetimeSeconds: number;
+  tunnelInterfaceId?: string;
+  routeThroughTunnel: boolean;
+}
+
+export interface VpnRuntimeConfig {
+  tunnels: Record<string, VpnTunnelRuntimeConfig>;
+}
+
+export interface WirelessRadioRuntimeConfig {
+  id: string;
+  enabled: boolean;
+  band: "2.4GHz" | "5GHz" | "6GHz";
+  channel: number;
+  channelWidthMhz: 20 | 40 | 80 | 160 | 320;
+  txPowerDbm: number;
+}
+
+export interface WirelessSsidRuntimeConfig {
+  id: string;
+  name: string;
+  enabled: boolean;
+  bssid: string;
+  radioIds: string[];
+  securityMode: "open" | "wpa2-psk" | "wpa3-psk" | "wpa2-enterprise" | "wpa3-enterprise";
+  preSharedKey?: string;
+  radiusServer?: string;
+  radiusSecret?: string;
+  vlanId: number;
+  guest: boolean;
+  clientIsolation: boolean;
+  captivePortal: boolean;
+  maximumClients: number;
+  roaming: boolean;
+  mesh: boolean;
+}
+
+export interface WirelessRuntimeConfig {
+  radios: Record<string, WirelessRadioRuntimeConfig>;
+  ssids: Record<string, WirelessSsidRuntimeConfig>;
+}
+
+export interface RadiusRuntimeConfig {
+  enabled: boolean;
+  port: number;
+  sharedSecret: string;
+  users: Record<string, { username: string; password: string; vlanId?: number; enabled: boolean }>;
+  clients: Array<{ deviceId: string; secret: string }>;
+}
+
+export interface SecurityRuntimeConfig {
+  firewall: FirewallRuntimeConfig;
+  vpn: VpnRuntimeConfig;
+  wireless: WirelessRuntimeConfig;
+  radius: RadiusRuntimeConfig;
+}
+
 export interface DeviceRuntimeConfig {
   system: {
     hostname: string;
@@ -396,6 +511,7 @@ export interface DeviceRuntimeConfig {
   switching?: SwitchingRuntimeConfig;
   routing: RoutingRuntimeConfig;
   services: ServicesRuntimeConfig;
+  security: SecurityRuntimeConfig;
 }
 
 export interface ConfigurationValidationResult {
@@ -448,7 +564,11 @@ export interface ProjectConfigurationState {
       | "ROUTE_REMOVED"
       | "SERVICE_CHANGED"
       | "ACL_CHANGED"
-      | "NAT_CHANGED";
+      | "NAT_CHANGED"
+      | "FIREWALL_CHANGED"
+      | "VPN_CHANGED"
+      | "WIRELESS_CHANGED"
+      | "RADIUS_CHANGED";
     source: ConfigurationSource;
     message: string;
     revisionId?: string;

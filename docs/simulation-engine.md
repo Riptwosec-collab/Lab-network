@@ -37,6 +37,14 @@ Engine มี lifecycle (`start`, `pause`, `stop`, `reset`, `step`, `setSpeed`),
 - Routed ICMP ตรวจ outbound ACL ตาม sequence พร้อม implicit deny ทั้ง forward/return path แล้วใช้ NAT/PAT rule แรกที่ match
 - `PingResult` ส่งคืน policy evaluations และ translation table พร้อม timeline ที่ระบุ device, interface, direction, ACL/rule และ translated address
 
+## Security, VPN and Wireless
+
+- `SecuritySimulationEngine` ใช้ first-match firewall policy ตาม zone direction แล้วสร้าง stateful session สำหรับ return traffic
+- Firewall implicit deny ส่งคืน device, source/destination zone และเหตุผลใน `PingResult`/timeline
+- VPN negotiation ตรวจ reciprocal peers, pre-shared key, encryption/hash/IKE proposal และ protected networks
+- Wireless association ตรวจ SSID, radio, WPA password, client capacity/link signal และ VLAN mapping
+- 802.1X association ตรวจ RADIUS client secret, user/password และใช้ dynamic VLAN จาก Access-Accept
+
 ## Roadmap ถัดไป
 
 1. deterministic simulation clock และ seeded randomness

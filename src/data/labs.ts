@@ -69,6 +69,19 @@ export const labs: readonly LabDefinition[] = [
     "สร้าง SSID สำหรับ guest",
     "กำหนด policy ห้ามเข้าถึง private LAN",
   ]),
+  makeLab(
+    "firewall-policy",
+    "Stateful Firewall Policy",
+    "Professional",
+    "ยาก",
+    50,
+    "สร้าง security zones และ first-match stateful policy",
+    ["ผูก interfaces กับ trust และ untrust zones", "เพิ่ม ordered security policy และตรวจ implicit deny"],
+  ),
+  makeLab("vpn", "Site-to-Site VPN", "Professional", "ยาก", 60, "เชื่อม protected networks ผ่าน IPSec peers", [
+    "สร้าง tunnel และ protected networks ทั้งสองฝั่ง",
+    "ตรวจ peer, key, proposal และ tunnel state ให้ขึ้น",
+  ]),
   makeLab("nas-sharing", "NAS File Sharing", "Specialist", "ปานกลาง", 40, "ให้ผู้ใช้เข้าถึง NAS อย่างปลอดภัย", [
     "กำหนด IP และ gateway ให้ NAS",
     "เปิด file service และทดสอบ client",

@@ -26,6 +26,7 @@ import { deviceRegistry } from "@/data/device-catalog";
 import { IpConfigurationPanel } from "@/components/inspector/ip-configuration-panel";
 import { RoutingConfigurationPanel } from "@/components/inspector/routing-configuration-panel";
 import { ServicesConfigurationPanel } from "@/components/inspector/services-configuration-panel";
+import { SecurityConfigurationPanel } from "@/components/inspector/security-configuration-panel";
 import { SwitchingConfigurationPanel } from "@/components/inspector/switching-configuration-panel";
 import {
   CliConfigurationPanel,
@@ -275,6 +276,16 @@ export function DeviceInspector() {
               <ServicesConfigurationPanel key={device.id} device={device} />
             </TabsContent>
           )}
+          {inspectorTabs.includes("security") && (
+            <TabsContent value="security" className="mt-0">
+              <SecurityConfigurationPanel key={`security-${device.id}`} device={device} />
+            </TabsContent>
+          )}
+          {inspectorTabs.includes("wireless") && (
+            <TabsContent value="wireless" className="mt-0">
+              <SecurityConfigurationPanel key={`wireless-${device.id}`} device={device} />
+            </TabsContent>
+          )}
 
           <TabsContent value="configuration" className="mt-0">
             <ConfigurationStatusPanel device={device} />
@@ -308,6 +319,8 @@ export function DeviceInspector() {
                   "vlan",
                   "routing",
                   "services",
+                  "security",
+                  "wireless",
                   "configuration",
                   "cli",
                   "raw-config",

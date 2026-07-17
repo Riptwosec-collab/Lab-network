@@ -1,5 +1,6 @@
 import { IPv4PingEngine } from "@/engine/protocols/ping-engine";
 import { NetworkServicesEngine } from "@/engine/protocols/services-engine";
+import { SecuritySimulationEngine } from "@/engine/protocols/security-engine";
 import type { LabDefinition, LabValidationResult, LabValidator } from "@/types/lab";
 import type { ProjectConfigurationState, TopologySnapshot } from "@/types/network";
 
@@ -16,6 +17,9 @@ export class TopologyLabValidator implements LabValidator {
     if (lab.id === "dhcp") return this.validateDhcpLab(lab);
     if (lab.id === "dns") return this.validateDnsLab(lab);
     if (lab.id === "nat-acl") return this.validateNatAclLab(lab);
+    if (lab.id === "guest-wifi") return this.validateWirelessLab(lab);
+    if (lab.id === "vpn") return this.validateVpnLab(lab);
+    if (lab.id === "firewall-policy") return this.validateFirewallLab(lab);
     return lab.tasks.map((task) => ({
       taskId: task.id,
       status: "failed",
@@ -220,6 +224,84 @@ export class TopologyLabValidator implements LabValidator {
         message: aclDevice
           ? `พบ ordered ACL assignment บน ${aclDevice.hostname}`
           : "ต้องสร้าง ACL และผูก in/out กับ interface",
+      },
+    ]);
+  }
+
+  private validateWirelessLab(lab: LabDefinition): readonly LabValidationResult[] {
+    const ap = this.topology.devices.find((device) =>
+      Object.values(this.configurationState.devices[device.id]?.runningConfig.security.wireless.ssids ?? {}).some(
+        (ssid) => ssid.enabled,
+      ),
+    );
+    const ssid = ap
+      ? Object.values(this.configurationState.devices[ap.id]!.runningConfig.security.wireless.ssids).find(
+          (item) => item.enabled,
+        )
+      : undefined;
+    const client = this.topology.devices.find(
+      (device) => device.id !== ap?.id && (device.category === "end-device" || device.capabilities.includes("client")),
+    );
+    const association =
+      ap && client && ssid
+        ? new SecuritySimulationEngine(this.topology).associateWireless(client.id, ap.id, ssid.name, {
+            password: ssid.preSharedKey,
+          })
+        : undefined;
+    return mapChecks(lab, [
+      {
+        passed: !!association?.success,
+        message: association?.success
+          ? `Client associated to ${ssid?.name} on VLAN ${association.association?.vlanId}`
+          : (association?.reason ?? "ต้องเปิด radio และสร้าง SSID"),
+      },
+      {
+        passed: !!ssid && (ssid.guest || ssid.clientIsolation || ssid.vlanId !== 1),
+        message:
+          ssid && (ssid.guest || ssid.clientIsolation || ssid.vlanId !== 1)
+            ? "Guest isolation/VLAN mapping is configured"
+            : "Guest SSID ต้องแยก VLAN หรือเปิด client isolation",
+      },
+    ]);
+  }
+
+  private validateVpnLab(lab: LabDefinition): readonly LabValidationResult[] {
+    const local = this.topology.devices.find(
+      (device) =>
+        Object.keys(this.configurationState.devices[device.id]?.runningConfig.security.vpn.tunnels ?? {}).length,
+    );
+    const tunnelId = local
+      ? Object.keys(this.configurationState.devices[local.id]!.runningConfig.security.vpn.tunnels)[0]
+      : undefined;
+    const result =
+      local && tunnelId ? new SecuritySimulationEngine(this.topology).negotiateVpn(local.id, tunnelId) : undefined;
+    return mapChecks(lab, [
+      { passed: !!tunnelId, message: tunnelId ? "พบ enabled VPN tunnel configuration" : "ต้องสร้าง VPN tunnel" },
+      {
+        passed: !!result?.success,
+        message: result?.success ? result.detail : (result?.detail ?? "ต้องมี matching remote peer"),
+      },
+    ]);
+  }
+
+  private validateFirewallLab(lab: LabDefinition): readonly LabValidationResult[] {
+    const firewall = this.topology.devices.find((device) => {
+      const config = this.configurationState.devices[device.id]?.runningConfig.security.firewall;
+      return config?.enabled && Object.keys(config.zones).length >= 2;
+    });
+    const policies = firewall
+      ? this.configurationState.devices[firewall.id]!.runningConfig.security.firewall.policies
+      : [];
+    return mapChecks(lab, [
+      {
+        passed: !!firewall,
+        message: firewall ? `พบ security zones บน ${firewall.hostname}` : "ต้องสร้าง security zones อย่างน้อยสอง zone",
+      },
+      {
+        passed: policies.length > 0,
+        message: policies.length
+          ? `พบ ordered policy ${policies[0]!.name} และ implicit deny`
+          : "ต้องเพิ่ม security policy อย่างน้อยหนึ่ง rule",
       },
     ]);
   }

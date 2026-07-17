@@ -3,6 +3,7 @@ import { analyzeIPv4, isAddressInSubnet, validateTopologyIPv4 } from "@/engine/p
 import { Layer2Engine, type Layer2FailureCode, type Layer2TraceResult } from "@/engine/protocols/layer2-engine";
 import { IPv4RoutingEngine, type RoutingFailureCode, type RoutingTraceResult } from "@/engine/protocols/routing-engine";
 import { NetworkServicesEngine, type PacketPolicyResult } from "@/engine/protocols/services-engine";
+import { SecuritySimulationEngine, type FirewallPathResult } from "@/engine/protocols/security-engine";
 import type { NetworkConnection, NetworkDevice, NetworkInterface, TopologySnapshot } from "@/types/network";
 
 export type PingFailureCode =
@@ -14,12 +15,21 @@ export type PingFailureCode =
   | "DESTINATION_UNREACHABLE"
   | "LINK_DOWN"
   | "ACL_DENY"
+  | "FIREWALL_DENY"
   | "ROUTING_NOT_SUPPORTED"
   | Layer2FailureCode
   | RoutingFailureCode;
 
 export type PingStepKind =
-  "validation" | "layer2" | "routing" | "policy" | "arp-request" | "arp-reply" | "icmp-request" | "icmp-reply";
+  | "validation"
+  | "layer2"
+  | "routing"
+  | "policy"
+  | "security"
+  | "arp-request"
+  | "arp-reply"
+  | "icmp-request"
+  | "icmp-reply";
 
 export interface PingTimelineStep {
   readonly id: string;
@@ -52,6 +62,8 @@ export interface PingResult {
   readonly returnRouting?: RoutingTraceResult;
   readonly policy?: PacketPolicyResult;
   readonly returnPolicy?: PacketPolicyResult;
+  readonly firewall?: FirewallPathResult;
+  readonly returnFirewall?: FirewallPathResult;
 }
 
 interface InterfaceOwner {
@@ -85,6 +97,7 @@ export class IPv4PingEngine {
       layer2?: Layer2TraceResult,
       routing?: RoutingTraceResult,
       policy?: PacketPolicyResult,
+      firewall?: FirewallPathResult,
     ): PingResult => ({
       success: false,
       sourceDeviceId: request.sourceDeviceId,
@@ -99,6 +112,7 @@ export class IPv4PingEngine {
       layer2,
       routing,
       policy,
+      firewall,
     });
 
     const sourceDevice = this.topology.devices.find((device) => device.id === request.sourceDeviceId);
@@ -260,6 +274,50 @@ export class IPv4PingEngine {
           routing,
           returnPolicy,
         );
+      const security = new SecuritySimulationEngine(this.topology);
+      const firewall = security.evaluateFirewallPath(
+        routing,
+        { sourceIp: sourceInfo.address, destinationIp: request.destinationIp, protocol: "icmp" },
+        new Date(now),
+      );
+      firewall.decisions.forEach((decision) =>
+        step(
+          "security",
+          decision.permitted ? "success" : "failure",
+          `${decision.hostname}: ${decision.sourceZone} → ${decision.destinationZone}`,
+          decision.reason,
+        ),
+      );
+      if (!firewall.permitted)
+        return fail(
+          "FIREWALL_DENY",
+          firewall.reason,
+          source,
+          destination,
+          routing.layer2Segments.at(-1),
+          routing,
+          policy,
+          firewall,
+        );
+      const returnFirewall = security.evaluateFirewallPath(
+        returnRouting,
+        { sourceIp: request.destinationIp, destinationIp: sourceInfo.address, protocol: "icmp" },
+        new Date(now),
+      );
+      returnFirewall.decisions.forEach((decision) =>
+        step("security", decision.permitted ? "success" : "failure", `Return ${decision.hostname}`, decision.reason),
+      );
+      if (!returnFirewall.permitted)
+        return fail(
+          "FIREWALL_DENY",
+          `Return path: ${returnFirewall.reason}`,
+          source,
+          destination,
+          returnRouting.layer2Segments.at(-1),
+          routing,
+          returnPolicy,
+          returnFirewall,
+        );
       const gateway = routingEngine.findInterfaceByIp(sourceGateway);
       if (gateway) {
         const gatewayMac = gateway.networkInterface.macAddress ?? deriveMacAddress(gateway.networkInterface.id);
@@ -330,6 +388,8 @@ export class IPv4PingEngine {
         returnRouting,
         policy,
         returnPolicy,
+        firewall,
+        returnFirewall,
       };
     }
 

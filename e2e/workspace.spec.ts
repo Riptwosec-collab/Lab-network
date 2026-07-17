@@ -184,3 +184,29 @@ test("configures NAT and ordered ACL services on a firewall", async ({ page }) =
   await expect(page.getByLabel("Educational CLI output")).toContainText("EDGE");
   expect(errors).toEqual([]);
 });
+
+test("configures a stateful firewall and associates a wireless client", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") errors.push(message.text());
+  });
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.goto("/workspace?project=demo-project");
+  const firewallNode = page.locator(".react-flow__node").filter({ hasText: "firewall-" });
+  await firewallNode.dispatchEvent("click");
+  await page.getByRole("tab", { name: "security" }).click();
+  await page.getByRole("button", { name: "Initialize trust / untrust zones" }).click();
+  await page.getByLabel("Firewall policy name").fill("TRUST-OUT");
+  await page.getByRole("button", { name: "Add first-match policy" }).click();
+  await expect(page.getByText(/trust → untrust · allow/)).toBeVisible();
+  await page.getByRole("tab", { name: "cli" }).click();
+  const command = page.getByRole("textbox", { name: "CLI command", exact: true });
+  await command.fill("show security-policy");
+  await command.press("Enter");
+  await expect(page.getByLabel("Educational CLI output")).toContainText("TRUST-OUT");
+
+  await page.getByRole("button", { name: "Security LIVE", exact: true }).click();
+  await page.getByRole("button", { name: "Associate Client" }).click();
+  await expect(page.getByText("ASSOCIATED", { exact: true })).toBeVisible();
+  expect(errors).toEqual([]);
+});

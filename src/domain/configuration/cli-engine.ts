@@ -269,6 +269,82 @@ const commandRegistry: readonly CommandDefinition[] = [
     },
   },
   {
+    id: "show-security-policy",
+    modes: ["privileged", "user"],
+    usage: "show security-policy",
+    matches: exact(["show", "security-policy"]),
+    execute: ({ context, state }) => ({
+      context,
+      output: [
+        "Order  Source     Destination  Action  Name",
+        ...[...state.runningConfig.security.firewall.policies]
+          .sort((a, b) => a.order - b.order)
+          .map(
+            (policy) =>
+              `${String(policy.order).padEnd(6)} ${policy.sourceZone.padEnd(10)} ${policy.destinationZone.padEnd(12)} ${policy.action.padEnd(7)} ${policy.name}`,
+          ),
+        ...(state.runningConfig.security.firewall.policies.length ? [] : ["Implicit deny any any"]),
+      ],
+    }),
+  },
+  {
+    id: "show-security-sessions",
+    modes: ["privileged", "user"],
+    usage: "show security sessions",
+    matches: exact(["show", "security", "sessions"]),
+    execute: ({ context }) => ({
+      context,
+      output: ["No stateful sessions in this CLI session. Run a routed packet to populate the live Security tool."],
+    }),
+  },
+  {
+    id: "show-vpn-tunnels",
+    modes: ["privileged", "user"],
+    usage: "show vpn tunnels",
+    matches: exact(["show", "vpn", "tunnels"]),
+    execute: ({ context, state }) => ({
+      context,
+      output: [
+        "Tunnel               Type          Local Peer       Remote Peer",
+        ...Object.values(state.runningConfig.security.vpn.tunnels).map(
+          (tunnel) =>
+            `${tunnel.name.padEnd(20)} ${tunnel.type.padEnd(13)} ${tunnel.localPeer.padEnd(16)} ${tunnel.remotePeer}`,
+        ),
+      ],
+    }),
+  },
+  {
+    id: "show-wireless-ssids",
+    modes: ["privileged", "user"],
+    usage: "show wireless ssids",
+    matches: exact(["show", "wireless", "ssids"]),
+    execute: ({ context, state }) => ({
+      context,
+      output: [
+        "SSID                 Security             VLAN  State",
+        ...Object.values(state.runningConfig.security.wireless.ssids).map(
+          (ssid) =>
+            `${ssid.name.padEnd(20)} ${ssid.securityMode.padEnd(20)} ${String(ssid.vlanId).padEnd(5)} ${ssid.enabled ? "broadcast" : "disabled"}`,
+        ),
+      ],
+    }),
+  },
+  {
+    id: "show-radius-users",
+    modes: ["privileged", "user"],
+    usage: "show radius users",
+    matches: exact(["show", "radius", "users"]),
+    execute: ({ context, state }) => ({
+      context,
+      output: [
+        `RADIUS ${state.runningConfig.security.radius.enabled ? "enabled" : "disabled"} · UDP/${state.runningConfig.security.radius.port}`,
+        ...Object.values(state.runningConfig.security.radius.users).map(
+          (user) => `${user.username}  VLAN ${user.vlanId ?? "default"}  ${user.enabled ? "enabled" : "disabled"}`,
+        ),
+      ],
+    }),
+  },
+  {
     id: "show-ip-nat-translations",
     modes: ["privileged", "user"],
     usage: "show ip nat translations",
@@ -497,6 +573,131 @@ const commandRegistry: readonly CommandDefinition[] = [
         return { context, output: ["% Service must be dhcp, dns, nat or acl"] };
       const nextConfig = cloneRunning(state);
       nextConfig.services[service].enabled = true;
+      return { context, output: [], nextConfig, action: "apply" };
+    },
+  },
+  {
+    id: "zone-security",
+    modes: ["global-config"],
+    usage: "zone security <name> interface <interface-name>",
+    matches: starts(["zone", "security"]),
+    execute: ({ tokens, context, state, device }) => {
+      const name = tokens[2];
+      const interfaceName = tokens[4];
+      const networkInterface = device.interfaces.find(
+        (item) => item.name.toLowerCase() === interfaceName?.toLowerCase(),
+      );
+      if (!name || tokens[3]?.toLowerCase() !== "interface" || !networkInterface)
+        return { context, output: ["% Usage: zone security <name> interface <interface-name>"] };
+      const nextConfig = cloneRunning(state);
+      nextConfig.security.firewall.enabled = true;
+      nextConfig.security.firewall.zones[name] = { name, interfaceIds: [networkInterface.id] };
+      return { context, output: [], nextConfig, action: "apply" };
+    },
+  },
+  {
+    id: "security-policy",
+    modes: ["global-config"],
+    usage: "security-policy <order> <name> from <source-zone> to <destination-zone> <allow|deny>",
+    matches: starts(["security-policy"]),
+    execute: ({ tokens, context, state }) => {
+      const order = Number(tokens[1]);
+      const name = tokens[2];
+      const sourceZone = tokens[4];
+      const destinationZone = tokens[6];
+      const action = tokens[7] as "allow" | "deny";
+      if (
+        !Number.isInteger(order) ||
+        !name ||
+        tokens[3] !== "from" ||
+        !sourceZone ||
+        tokens[5] !== "to" ||
+        !destinationZone ||
+        !(["allow", "deny"] as const).includes(action)
+      )
+        return { context, output: ["% Invalid security-policy syntax"] };
+      const nextConfig = cloneRunning(state);
+      nextConfig.security.firewall.enabled = true;
+      nextConfig.security.firewall.policies.push({
+        id: `policy-${order}`,
+        order,
+        enabled: true,
+        name,
+        sourceZone,
+        destinationZone,
+        sourceAddress: "any",
+        destinationAddress: "any",
+        service: "any",
+        action,
+        logging: true,
+      });
+      return { context, output: [], nextConfig, action: "apply" };
+    },
+  },
+  {
+    id: "wireless-ssid",
+    modes: ["global-config"],
+    usage: "wireless ssid <name> psk <key> vlan <id>",
+    matches: starts(["wireless", "ssid"]),
+    execute: ({ tokens, context, state, device }) => {
+      const name = tokens[2];
+      const key = tokens[4];
+      const vlanId = Number(tokens[6]);
+      if (!name || tokens[3] !== "psk" || !key || key.length < 8 || tokens[5] !== "vlan" || !Number.isInteger(vlanId))
+        return { context, output: ["% Usage: wireless ssid <name> psk <8+ chars> vlan <id>"] };
+      const nextConfig = cloneRunning(state);
+      const radioIds = Object.keys(nextConfig.security.wireless.radios);
+      nextConfig.security.wireless.ssids[name] = {
+        id: name,
+        name,
+        enabled: true,
+        bssid: device.interfaces.find((item) => item.type === "wireless")?.macAddress ?? "02:00:00:00:00:01",
+        radioIds,
+        securityMode: "wpa2-psk",
+        preSharedKey: key,
+        vlanId,
+        guest: false,
+        clientIsolation: false,
+        captivePortal: false,
+        maximumClients: 64,
+        roaming: true,
+        mesh: false,
+      };
+      return { context, output: [], nextConfig, action: "apply" };
+    },
+  },
+  {
+    id: "radius-server-local",
+    modes: ["global-config"],
+    usage: "radius-server local secret <secret>",
+    matches: starts(["radius-server", "local", "secret"]),
+    execute: ({ tokens, context, state }) => {
+      const secret = tokens[3];
+      if (!secret) return { context, output: ["% RADIUS secret is required"] };
+      const nextConfig = cloneRunning(state);
+      nextConfig.security.radius.enabled = true;
+      nextConfig.security.radius.sharedSecret = secret;
+      return { context, output: [], nextConfig, action: "apply" };
+    },
+  },
+  {
+    id: "radius-user",
+    modes: ["global-config"],
+    usage: "radius-user <username> password <password> [vlan <id>]",
+    matches: starts(["radius-user"]),
+    execute: ({ tokens, context, state }) => {
+      const username = tokens[1];
+      const password = tokens[3];
+      const vlanId = tokens[4] === "vlan" ? Number(tokens[5]) : undefined;
+      if (!username || tokens[2] !== "password" || !password)
+        return { context, output: ["% Invalid radius-user syntax"] };
+      const nextConfig = cloneRunning(state);
+      nextConfig.security.radius.users[username] = {
+        username,
+        password,
+        vlanId: Number.isInteger(vlanId) ? vlanId : undefined,
+        enabled: true,
+      };
       return { context, output: [], nextConfig, action: "apply" };
     },
   },

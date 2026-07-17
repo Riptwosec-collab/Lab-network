@@ -148,6 +148,117 @@ const switchingRuntimeConfigSchema = z.object({
   ),
 });
 
+const securityRuntimeConfigSchema = z.object({
+  firewall: z.object({
+    enabled: z.boolean(),
+    zones: z.record(z.string(), z.object({ name: z.string().min(1), interfaceIds: z.array(z.string()) })),
+    addressObjects: z.record(
+      z.string(),
+      z.object({ name: z.string().min(1), network: z.string(), prefixLength: z.number().int().min(0).max(32) }),
+    ),
+    serviceObjects: z.record(
+      z.string(),
+      z.object({
+        name: z.string().min(1),
+        protocol: z.enum(["ip", "icmp", "tcp", "udp"]),
+        ports: z.array(z.number().int().min(1).max(65535)),
+      }),
+    ),
+    policies: z.array(
+      z.object({
+        id: z.string().min(1),
+        order: z.number().int().nonnegative(),
+        enabled: z.boolean(),
+        name: z.string().min(1),
+        sourceZone: z.string(),
+        destinationZone: z.string(),
+        sourceAddress: z.string(),
+        destinationAddress: z.string(),
+        service: z.string(),
+        application: z.string().optional(),
+        action: z.enum(["allow", "deny"]),
+        logging: z.boolean(),
+        schedule: z.string().optional(),
+      }),
+    ),
+    sessionTimeoutSeconds: z.number().int().positive(),
+    natOrder: z.enum(["before-policy", "after-policy"]),
+  }),
+  vpn: z.object({
+    tunnels: z.record(
+      z.string(),
+      z.object({
+        id: z.string().min(1),
+        name: z.string().min(1),
+        type: z.enum(["site-to-site", "remote-access", "gre", "ipsec"]),
+        enabled: z.boolean(),
+        localPeer: z.string(),
+        remotePeer: z.string(),
+        localNetwork: z.string(),
+        localPrefixLength: z.number().int().min(0).max(32),
+        remoteNetwork: z.string(),
+        remotePrefixLength: z.number().int().min(0).max(32),
+        preSharedKey: z.string().optional(),
+        encryption: z.enum(["aes128", "aes256", "3des", "none"]),
+        hash: z.enum(["sha1", "sha256", "sha384", "none"]),
+        ikeVersion: z.enum(["ikev1", "ikev2", "none"]),
+        lifetimeSeconds: z.number().int().positive(),
+        tunnelInterfaceId: z.string().optional(),
+        routeThroughTunnel: z.boolean(),
+      }),
+    ),
+  }),
+  wireless: z.object({
+    radios: z.record(
+      z.string(),
+      z.object({
+        id: z.string(),
+        enabled: z.boolean(),
+        band: z.enum(["2.4GHz", "5GHz", "6GHz"]),
+        channel: z.number().int().positive(),
+        channelWidthMhz: z.union([z.literal(20), z.literal(40), z.literal(80), z.literal(160), z.literal(320)]),
+        txPowerDbm: z.number(),
+      }),
+    ),
+    ssids: z.record(
+      z.string(),
+      z.object({
+        id: z.string(),
+        name: z.string(),
+        enabled: z.boolean(),
+        bssid: z.string(),
+        radioIds: z.array(z.string()),
+        securityMode: z.enum(["open", "wpa2-psk", "wpa3-psk", "wpa2-enterprise", "wpa3-enterprise"]),
+        preSharedKey: z.string().optional(),
+        radiusServer: z.string().optional(),
+        radiusSecret: z.string().optional(),
+        vlanId: z.number().int().min(1).max(4094),
+        guest: z.boolean(),
+        clientIsolation: z.boolean(),
+        captivePortal: z.boolean(),
+        maximumClients: z.number().int().positive(),
+        roaming: z.boolean(),
+        mesh: z.boolean(),
+      }),
+    ),
+  }),
+  radius: z.object({
+    enabled: z.boolean(),
+    port: z.number().int().min(1).max(65535),
+    sharedSecret: z.string(),
+    users: z.record(
+      z.string(),
+      z.object({
+        username: z.string(),
+        password: z.string(),
+        vlanId: z.number().int().min(1).max(4094).optional(),
+        enabled: z.boolean(),
+      }),
+    ),
+    clients: z.array(z.object({ deviceId: z.string(), secret: z.string() })),
+  }),
+});
+
 export const deviceRuntimeConfigSchema = z.object({
   system: z.object({
     hostname: z.string().min(1).max(63),
@@ -299,6 +410,7 @@ export const deviceRuntimeConfigSchema = z.object({
       ),
     }),
   }),
+  security: securityRuntimeConfigSchema,
 });
 
 const configurationValidationResultSchema = z.object({
@@ -353,6 +465,10 @@ export const projectConfigurationStateSchema = z.object({
         "SERVICE_CHANGED",
         "ACL_CHANGED",
         "NAT_CHANGED",
+        "FIREWALL_CHANGED",
+        "VPN_CHANGED",
+        "WIRELESS_CHANGED",
+        "RADIUS_CHANGED",
       ]),
       source: z.enum(["form", "cli", "raw", "import", "template", "lab-solution", "system"]),
       message: z.string(),

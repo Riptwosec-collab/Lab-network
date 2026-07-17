@@ -58,5 +58,8 @@ describe("workspace components", () => {
     await user.click(screen.getByRole("tab", { name: "services" }));
     expect(screen.getByText("DHCP pools")).toBeInTheDocument();
     expect(screen.getByText("Ordered ACL policy")).toBeInTheDocument();
+    await user.click(screen.getByRole("tab", { name: "security" }));
+    expect(screen.getByText("Stateful Firewall")).toBeInTheDocument();
+    expect(screen.getByText("VPN Tunnels")).toBeInTheDocument();
   });
 });
