@@ -6,12 +6,8 @@ import { Activity, AlertTriangle, CheckCircle2, HeartPulse, Network, Search } fr
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  HighAvailabilityEngine,
-  MonitoringEngine,
-  TroubleshootingEngine,
-  type NetworkIncident,
-} from "@/engine/operations/operations-engine";
+import { TroubleshootingMode } from "@/components/simulation/troubleshooting-mode";
+import { HighAvailabilityEngine, MonitoringEngine, type NetworkIncident } from "@/engine/operations/operations-engine";
 import { OspfEngine } from "@/engine/protocols/ospf-engine";
 import { useTopologyStore } from "@/stores/topology-store";
 
@@ -25,7 +21,6 @@ export function OperationsTool() {
   const metrics = useMemo(() => monitoring.metrics(), [monitoring]);
   const alerts = useMemo(() => monitoring.alerts(), [monitoring]);
   const incidents = useMemo(() => monitoring.incidents(), [monitoring]);
-  const findings = useMemo(() => new TroubleshootingEngine(topology).analyze(), [topology]);
   const haMembers = useMemo(() => new HighAvailabilityEngine(topology).members(), [topology]);
   const ospfNeighbors = useMemo(
     () => devices.flatMap((device) => new OspfEngine(topology).neighbors(device)),
@@ -85,25 +80,7 @@ export function OperationsTool() {
           )}
         </TabsContent>
         <TabsContent value="troubleshooting" className="mt-2 max-h-56 overflow-auto">
-          {findings.length ? (
-            <div className="space-y-2">
-              {findings.map((finding) => (
-                <div
-                  key={finding.id}
-                  className="border-border grid grid-cols-[42px_1fr] gap-2 rounded-lg border p-2 text-[10px]"
-                >
-                  <Badge variant={finding.severity === "info" ? "outline" : "warning"}>{finding.layer}</Badge>
-                  <div>
-                    <p className="font-medium">{finding.symptom}</p>
-                    <p className="text-muted-foreground mt-1">Evidence: {finding.evidence}</p>
-                    <p className="text-primary mt-1">Next: {finding.recommendation}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <Empty message="No faults detected. Layer 1 through security checks are healthy." success />
-          )}
+          <TroubleshootingMode />
         </TabsContent>
         <TabsContent value="incidents" className="mt-2 max-h-56 overflow-auto">
           {incidents.length ? (
