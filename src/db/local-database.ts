@@ -20,6 +20,10 @@ export interface ProgressRecord {
   readonly id: string;
   progress: number;
   completedAt?: string;
+  currentSection?: number;
+  quizScore?: number;
+  bookmarked?: boolean;
+  lastOpenedAt?: string;
   updatedAt: string;
 }
 
