@@ -253,3 +253,26 @@ test("opens an SMB session and degrades a RAID pool after disk failure", async (
   await expect(page.locator("aside").getByRole("button", { name: "Start rebuild" })).toBeVisible();
   expect(errors).toEqual([]);
 });
+
+test("routes a private cloud VM through NAT and opens the cloud inspector", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") errors.push(message.text());
+  });
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.goto("/workspace?project=demo-project");
+  await page.getByRole("button", { name: "Cloud LIVE", exact: true }).click();
+  await expect(page.getByTestId("cloud-network-tool")).toBeVisible();
+  await page.getByRole("button", { name: "Simulate", exact: true }).click();
+  await expect(page.getByText("CLOUD REACHABLE", { exact: true })).toBeVisible();
+  await expect(page.getByText("SNAT → 198.51.100.20", { exact: true })).toBeVisible();
+
+  const cloudNode = page.locator(".react-flow__node").filter({ hasText: "internet-cloud-" });
+  await cloudNode.dispatchEvent("click");
+  await page.locator("aside").getByRole("tab", { name: "cloud-network", exact: true }).click();
+  await expect(page.getByTestId("cloud-configuration-panel")).toBeVisible();
+  await expect(page.getByText("Nested Cloud Canvas", { exact: true })).toBeVisible();
+  await expect(page.getByText("Public Subnet", { exact: true })).toBeVisible();
+  await expect(page.getByText("Private Subnet", { exact: true })).toBeVisible();
+  expect(errors).toEqual([]);
+});

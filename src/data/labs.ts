@@ -131,4 +131,17 @@ export const labs: readonly LabDefinition[] = [
     "กำหนด IP และ gateway ให้ NAS",
     "เปิด file service และทดสอบ client",
   ]),
+  makeLab(
+    "cloud-networking",
+    "Vendor-neutral Cloud Networking",
+    "Specialist",
+    "Hard",
+    55,
+    "Build public and private cloud subnets with real route-table and security-policy decisions.",
+    [
+      "Give a public VM Internet access through an Internet Gateway",
+      "Give a private VM outbound Internet access through NAT without direct public exposure",
+      "Enforce stateful Security Group and ordered stateless Network ACL rules",
+    ],
+  ),
 ];

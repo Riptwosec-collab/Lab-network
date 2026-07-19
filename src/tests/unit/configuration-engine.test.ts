@@ -218,6 +218,34 @@ describe("structured CLI engine", () => {
     const shown = executeCliCommand("show access-lists", { mode: "privileged" }, router, state);
     expect(shown.output.join("\n")).toContain("EDGE");
   });
+
+  it("inspects and changes cloud routes through vendor-neutral CLI commands", () => {
+    const cloudDevice = createDemoProject().devices.find((item) => item.category === "cloud")!;
+    const state = createDeviceConfigurationState(cloudDevice);
+    const shown = executeCliCommand("show cloud routes", { mode: "privileged" }, cloudDevice, state);
+    expect(shown.output.join("\n")).toContain("Public Routes");
+    expect(shown.output.join("\n")).toContain("internet-gateway");
+
+    const changed = executeCliCommand(
+      "cloud route-table rt-private default via internet-gateway igw-main",
+      { mode: "global-config" },
+      cloudDevice,
+      state,
+    );
+    expect(changed.nextConfig?.cloud.resources["rt-private"]?.configuration.routes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ destinationCidr: "0.0.0.0/0", targetType: "internet-gateway" }),
+      ]),
+    );
+
+    const flow = executeCliCommand(
+      "test cloud flow vm-private internet tcp 443",
+      { mode: "privileged" },
+      cloudDevice,
+      state,
+    );
+    expect(flow.output[0]).toContain("ALLOW REACHABLE");
+  });
 });
 
 describe("configuration integration", () => {

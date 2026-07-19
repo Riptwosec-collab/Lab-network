@@ -11,7 +11,7 @@ export default defineConfig({
   webServer: {
     command: "pnpm exec next dev -p 33217",
     url: "http://127.0.0.1:33217/dashboard",
-    reuseExistingServer: false,
+    reuseExistingServer: !process.env.CI,
     timeout: 120_000,
   },
 });

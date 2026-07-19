@@ -33,6 +33,12 @@ import {
   renderStorageRunningConfig,
   validateStorageRuntimeConfig,
 } from "@/domain/configuration/storage-configuration";
+import {
+  createCloudRuntimeConfig,
+  normalizeCloudRuntimeConfig,
+  renderCloudRunningConfig,
+  validateCloudRuntimeConfig,
+} from "@/domain/configuration/cloud-configuration";
 
 const REVISION_LIMIT = 40;
 
@@ -109,6 +115,7 @@ export function createDeviceRuntimeConfig(device: NetworkDevice): DeviceRuntimeC
     security: createSecurityRuntimeConfig(device),
     operations: createOperationsRuntimeConfig(device),
     storage: createStorageRuntimeConfig(device),
+    cloud: createCloudRuntimeConfig(device),
   };
 }
 
@@ -195,6 +202,7 @@ function normalizeDeviceConfigurationState(
     security: normalizeSecurityRuntimeConfig(device, config.security),
     operations: normalizeOperationsRuntimeConfig(device, config.operations),
     storage: normalizeStorageRuntimeConfig(device, config.storage),
+    cloud: normalizeCloudRuntimeConfig(device, config.cloud),
   });
   return {
     ...current,
@@ -344,6 +352,7 @@ export function validateRuntimeConfig(
   issues.push(...validateSecurityRuntimeConfig(device, config.security));
   issues.push(...validateOperationsRuntimeConfig(device, config.operations));
   issues.push(...validateStorageRuntimeConfig(device, config.storage));
+  issues.push(...validateCloudRuntimeConfig(device, config.cloud));
   return { valid: issues.length === 0, issues };
 }
 
@@ -488,6 +497,8 @@ export function diffConfiguration(before: DeviceRuntimeConfig, after: DeviceRunt
   if (JSON.stringify(before.operations) !== JSON.stringify(after.operations))
     changes.push("operations configuration modified");
   if (JSON.stringify(before.storage) !== JSON.stringify(after.storage)) changes.push("storage configuration modified");
+  if (JSON.stringify(before.cloud) !== JSON.stringify(after.cloud))
+    changes.push("cloud networking configuration modified");
   return changes.length ? changes : ["No effective configuration changes"];
 }
 
@@ -524,6 +535,7 @@ export function renderRunningConfig(config: DeviceRuntimeConfig, device: Network
   lines.push(...renderSecurityRunningConfig(config.security));
   lines.push(...renderOperationsRunningConfig(config.operations));
   lines.push(...renderStorageRunningConfig(config.storage));
+  lines.push(...renderCloudRunningConfig(config.cloud));
   for (const networkInterface of device.interfaces) {
     const item = config.interfaces[networkInterface.id];
     if (!item) continue;

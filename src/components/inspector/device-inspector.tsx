@@ -27,6 +27,7 @@ import { IpConfigurationPanel } from "@/components/inspector/ip-configuration-pa
 import { RoutingConfigurationPanel } from "@/components/inspector/routing-configuration-panel";
 import { OperationsConfigurationPanel } from "@/components/inspector/operations-configuration-panel";
 import { StorageConfigurationPanel } from "@/components/inspector/storage-configuration-panel";
+import { CloudConfigurationPanel } from "@/components/inspector/cloud-configuration-panel";
 import { ServicesConfigurationPanel } from "@/components/inspector/services-configuration-panel";
 import { SecurityConfigurationPanel } from "@/components/inspector/security-configuration-panel";
 import { SwitchingConfigurationPanel } from "@/components/inspector/switching-configuration-panel";
@@ -100,6 +101,7 @@ export function DeviceInspector() {
         ? ["services"]
         : []),
       ...(device.category === "storage" || device.capabilities.includes("storage") ? ["storage"] : []),
+      ...(device.category === "cloud" || device.capabilities.includes("cloud") ? ["cloud-network"] : []),
       "configuration",
       "monitoring",
       "cli",
@@ -296,6 +298,11 @@ export function DeviceInspector() {
           {inspectorTabs.includes("storage") && (
             <TabsContent value="storage" className="mt-0">
               <StorageConfigurationPanel key={`storage-${device.id}`} device={device} />
+            </TabsContent>
+          )}
+          {inspectorTabs.includes("cloud-network") && (
+            <TabsContent value="cloud-network" className="mt-0">
+              <CloudConfigurationPanel key={`cloud-${device.id}`} device={device} />
             </TabsContent>
           )}
 

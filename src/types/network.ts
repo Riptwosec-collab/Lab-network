@@ -67,7 +67,7 @@ export const CABLE_TYPES = [
   "sd-wan",
 ] as const;
 
-export const CURRENT_PROJECT_SCHEMA_VERSION = 9;
+export const CURRENT_PROJECT_SCHEMA_VERSION = 10;
 
 export type DeviceCategory = (typeof DEVICE_CATEGORIES)[number];
 export type DeviceStatus =
@@ -604,6 +604,80 @@ export interface StorageRuntimeConfig {
   groups: Record<string, { name: string; memberUsernames: string[] }>;
 }
 
+export type CloudResourceType =
+  | "cloud-network"
+  | "public-subnet"
+  | "private-subnet"
+  | "route-table"
+  | "internet-gateway"
+  | "nat-gateway"
+  | "vpn-gateway"
+  | "security-group"
+  | "network-acl"
+  | "load-balancer"
+  | "virtual-machine"
+  | "cloud-storage"
+  | "cloud-database"
+  | "private-endpoint"
+  | "vpc-peering"
+  | "transit-network";
+
+export type CloudRouteTargetType =
+  "local" | "internet-gateway" | "nat-gateway" | "vpn-gateway" | "vpc-peering" | "transit-network";
+export type CloudRuleProtocol = "any" | "icmp" | "tcp" | "udp";
+
+export interface CloudRouteRuntimeConfig {
+  id: string;
+  destinationCidr: string;
+  targetType: CloudRouteTargetType;
+  targetResourceId: string;
+  enabled: boolean;
+}
+
+export interface CloudSecurityRuleRuntimeConfig {
+  id: string;
+  priority: number;
+  direction: "inbound" | "outbound";
+  action: "allow" | "deny";
+  protocol: CloudRuleProtocol;
+  cidr: string;
+  fromPort?: number;
+  toPort?: number;
+}
+
+export interface CloudResourceConfiguration {
+  cidr?: string;
+  subnetClass?: "public" | "private";
+  routeTableId?: string;
+  networkAclId?: string;
+  routes?: CloudRouteRuntimeConfig[];
+  rules?: CloudSecurityRuleRuntimeConfig[];
+  stateful?: boolean;
+  privateIp?: string;
+  publicIp?: string;
+  securityGroupIds?: string[];
+  targetNetworkId?: string;
+  targetCidr?: string;
+  availabilityZone?: string;
+}
+
+export interface CloudResourceRuntimeConfig {
+  id: string;
+  name: string;
+  type: CloudResourceType;
+  region: string;
+  networkId?: string;
+  subnetId?: string;
+  tags: Record<string, string>;
+  status: "available" | "pending" | "stopped" | "failed";
+  configuration: CloudResourceConfiguration;
+}
+
+export interface CloudRuntimeConfig {
+  enabled: boolean;
+  resources: Record<string, CloudResourceRuntimeConfig>;
+}
+
 export interface DeviceRuntimeConfig {
   system: {
     hostname: string;
@@ -619,6 +693,7 @@ export interface DeviceRuntimeConfig {
   security: SecurityRuntimeConfig;
   operations: OperationsRuntimeConfig;
   storage: StorageRuntimeConfig;
+  cloud: CloudRuntimeConfig;
 }
 
 export interface ConfigurationValidationResult {

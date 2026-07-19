@@ -558,6 +558,86 @@ export const deviceRuntimeConfigSchema = z.object({
       groups: z.record(z.string(), z.object({ name: z.string().min(1), memberUsernames: z.array(z.string()) })),
     })
     .default({ enabled: false, disks: {}, pools: {}, shares: {}, users: {}, groups: {} }),
+  cloud: z
+    .object({
+      enabled: z.boolean(),
+      resources: z.record(
+        z.string(),
+        z.object({
+          id: z.string().min(1),
+          name: z.string().min(1),
+          type: z.enum([
+            "cloud-network",
+            "public-subnet",
+            "private-subnet",
+            "route-table",
+            "internet-gateway",
+            "nat-gateway",
+            "vpn-gateway",
+            "security-group",
+            "network-acl",
+            "load-balancer",
+            "virtual-machine",
+            "cloud-storage",
+            "cloud-database",
+            "private-endpoint",
+            "vpc-peering",
+            "transit-network",
+          ]),
+          region: z.string().min(1),
+          networkId: z.string().optional(),
+          subnetId: z.string().optional(),
+          tags: z.record(z.string(), z.string()),
+          status: z.enum(["available", "pending", "stopped", "failed"]),
+          configuration: z.object({
+            cidr: z.string().optional(),
+            subnetClass: z.enum(["public", "private"]).optional(),
+            routeTableId: z.string().optional(),
+            networkAclId: z.string().optional(),
+            routes: z
+              .array(
+                z.object({
+                  id: z.string().min(1),
+                  destinationCidr: z.string().min(1),
+                  targetType: z.enum([
+                    "local",
+                    "internet-gateway",
+                    "nat-gateway",
+                    "vpn-gateway",
+                    "vpc-peering",
+                    "transit-network",
+                  ]),
+                  targetResourceId: z.string().min(1),
+                  enabled: z.boolean(),
+                }),
+              )
+              .optional(),
+            rules: z
+              .array(
+                z.object({
+                  id: z.string().min(1),
+                  priority: z.number().int().min(1).max(32_766),
+                  direction: z.enum(["inbound", "outbound"]),
+                  action: z.enum(["allow", "deny"]),
+                  protocol: z.enum(["any", "icmp", "tcp", "udp"]),
+                  cidr: z.string().min(1),
+                  fromPort: z.number().int().min(0).max(65_535).optional(),
+                  toPort: z.number().int().min(0).max(65_535).optional(),
+                }),
+              )
+              .optional(),
+            stateful: z.boolean().optional(),
+            privateIp: z.string().optional(),
+            publicIp: z.string().optional(),
+            securityGroupIds: z.array(z.string()).optional(),
+            targetNetworkId: z.string().optional(),
+            targetCidr: z.string().optional(),
+            availabilityZone: z.string().optional(),
+          }),
+        }),
+      ),
+    })
+    .default({ enabled: false, resources: {} }),
 });
 
 const configurationValidationResultSchema = z.object({

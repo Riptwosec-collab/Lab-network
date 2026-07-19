@@ -4,6 +4,7 @@ import { IPv4RoutingEngine } from "@/engine/protocols/routing-engine";
 import { OspfEngine } from "@/engine/protocols/ospf-engine";
 import { HighAvailabilityEngine, MonitoringEngine, TroubleshootingEngine } from "@/engine/operations/operations-engine";
 import { StorageSimulationEngine } from "@/engine/storage/storage-engine";
+import { CloudNetworkEngine } from "@/engine/cloud/cloud-network-engine";
 import { NetworkServicesEngine } from "@/engine/protocols/services-engine";
 import { renderRunningConfig } from "@/domain/configuration/configuration-engine";
 import type { DeviceConfigurationState, DeviceRuntimeConfig, NetworkDevice, TopologySnapshot } from "@/types/network";
@@ -386,6 +387,91 @@ const commandRegistry: readonly CommandDefinition[] = [
         ),
       ],
     }),
+  },
+  {
+    id: "show-cloud-resources",
+    modes: ["privileged", "user"],
+    usage: "show cloud resources",
+    matches: exact(["show", "cloud", "resources"]),
+    execute: ({ context, state }) => ({
+      context,
+      output: [
+        "Resource                 Type                 Region       Status",
+        ...Object.values(state.runningConfig.cloud.resources).map(
+          (item) => `${item.name.padEnd(24)} ${item.type.padEnd(20)} ${item.region.padEnd(12)} ${item.status}`,
+        ),
+      ],
+    }),
+  },
+  {
+    id: "show-cloud-routes",
+    modes: ["privileged", "user"],
+    usage: "show cloud routes",
+    matches: exact(["show", "cloud", "routes"]),
+    execute: ({ context, state }) => ({
+      context,
+      output: [
+        "Route table             Destination        Target",
+        ...Object.values(state.runningConfig.cloud.resources)
+          .filter((item) => item.type === "route-table")
+          .flatMap((item) =>
+            (item.configuration.routes ?? []).map(
+              (route) =>
+                `${item.name.padEnd(23)} ${route.destinationCidr.padEnd(18)} ${route.targetType}/${route.targetResourceId}`,
+            ),
+          ),
+      ],
+    }),
+  },
+  {
+    id: "show-cloud-security",
+    modes: ["privileged", "user"],
+    usage: "show cloud security",
+    matches: exact(["show", "cloud", "security"]),
+    execute: ({ context, state }) => ({
+      context,
+      output: [
+        "Policy                   Kind            Priority Direction Action Protocol CIDR",
+        ...Object.values(state.runningConfig.cloud.resources)
+          .filter((item) => item.type === "security-group" || item.type === "network-acl")
+          .flatMap((item) =>
+            (item.configuration.rules ?? []).map(
+              (rule) =>
+                `${item.name.padEnd(24)} ${item.type.padEnd(15)} ${String(rule.priority).padEnd(8)} ${rule.direction.padEnd(9)} ${rule.action.padEnd(6)} ${rule.protocol.padEnd(8)} ${rule.cidr}`,
+            ),
+          ),
+      ],
+    }),
+  },
+  {
+    id: "test-cloud-flow",
+    modes: ["privileged", "user"],
+    usage: "test cloud flow <source-id> <internet|destination-id> <icmp|tcp|udp> [port]",
+    matches: starts(["test", "cloud", "flow"]),
+    execute: ({ tokens, context, state }) => {
+      const sourceResourceId = tokens[3];
+      const destination = tokens[4];
+      const protocol = tokens[5]?.toLowerCase();
+      const port = tokens[6] ? Number(tokens[6]) : undefined;
+      if (!sourceResourceId || !destination || !protocol || !["icmp", "tcp", "udp"].includes(protocol))
+        return {
+          context,
+          output: ["% Usage: test cloud flow <source-id> <internet|destination-id> <icmp|tcp|udp> [port]"],
+        };
+      const result = new CloudNetworkEngine(state.runningConfig.cloud).simulate({
+        sourceResourceId,
+        destination,
+        protocol: protocol as "icmp" | "tcp" | "udp",
+        port,
+      });
+      return {
+        context,
+        output: [
+          `${result.success ? "ALLOW" : "DENY"} ${result.code}: ${result.reason}`,
+          ...result.steps.map((step) => `${step.decision.toUpperCase()} ${step.component}: ${step.detail}`),
+        ],
+      };
+    },
   },
   {
     id: "diagnose-network",
@@ -1263,6 +1349,37 @@ const commandRegistry: readonly CommandDefinition[] = [
       const nextConfig = cloneRunning(state);
       nextConfig.routing.ospf.enabled = true;
       nextConfig.routing.ospf.networks.push({ id: crypto.randomUUID(), ...parsed, areaId, cost });
+      return { context, output: [], nextConfig, action: "apply" };
+    },
+  },
+  {
+    id: "cloud-default-route",
+    modes: ["global-config"],
+    usage: "cloud route-table <id> default via <target-type> <target-id>",
+    matches: starts(["cloud", "route-table"]),
+    execute: ({ tokens, context, state }) => {
+      const routeTableId = tokens[2];
+      const viaIndex = tokens.findIndex((token) => token.toLowerCase() === "via");
+      const targetType = tokens[viaIndex + 1];
+      const targetResourceId = tokens[viaIndex + 2];
+      const validTargets = ["internet-gateway", "nat-gateway", "vpn-gateway", "vpc-peering", "transit-network"];
+      if (
+        !routeTableId ||
+        tokens[3]?.toLowerCase() !== "default" ||
+        viaIndex < 0 ||
+        !validTargets.includes(targetType ?? "") ||
+        !targetResourceId
+      )
+        return { context, output: ["% Usage: cloud route-table <id> default via <target-type> <target-id>"] };
+      const nextConfig = cloneRunning(state);
+      const table = nextConfig.cloud.resources[routeTableId];
+      const target = nextConfig.cloud.resources[targetResourceId];
+      if (table?.type !== "route-table") return { context, output: [`% Cloud route table ${routeTableId} not found`] };
+      if (!target) return { context, output: [`% Cloud route target ${targetResourceId} not found`] };
+      const route = table.configuration.routes?.find((item) => item.destinationCidr === "0.0.0.0/0");
+      if (!route) return { context, output: [`% Default route is missing from ${routeTableId}`] };
+      route.targetType = targetType as typeof route.targetType;
+      route.targetResourceId = targetResourceId;
       return { context, output: [], nextConfig, action: "apply" };
     },
   },

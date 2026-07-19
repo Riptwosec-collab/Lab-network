@@ -5,6 +5,7 @@ import {
   Activity,
   ChevronDown,
   CircleDot,
+  Cloud,
   DatabaseZap,
   FlaskConical,
   HardDrive,
@@ -20,6 +21,7 @@ import { ServicesTool } from "@/components/simulation/services-tool";
 import { SecurityTool } from "@/components/simulation/security-tool";
 import { OperationsTool } from "@/components/simulation/operations-tool";
 import { StorageTool } from "@/components/simulation/storage-tool";
+import { CloudNetworkTool } from "@/components/simulation/cloud-network-tool";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -27,7 +29,7 @@ import { useProjectStore } from "@/stores/project-store";
 import { useTopologyStore } from "@/stores/topology-store";
 import { useWorkspaceStore } from "@/stores/workspace-store";
 
-type BottomPanelTab = "status" | "ping" | "services" | "security" | "operations" | "storage" | "validator";
+type BottomPanelTab = "status" | "ping" | "services" | "security" | "operations" | "storage" | "cloud" | "validator";
 
 export function BottomPanel() {
   const [activeTab, setActiveTab] = useState<BottomPanelTab>("status");
@@ -137,6 +139,19 @@ export function BottomPanel() {
             LIVE
           </Badge>
         </button>
+        <button
+          className={cn(
+            "flex h-9 items-center gap-2 border-b-2 px-2 text-xs",
+            activeTab === "cloud" ? "border-primary text-primary" : "text-muted-foreground border-transparent",
+          )}
+          onClick={() => selectTab("cloud")}
+          aria-pressed={activeTab === "cloud"}
+        >
+          <Cloud className="size-3.5" /> Cloud
+          <Badge variant="success" className="px-1.5 py-0 text-[8px]">
+            LIVE
+          </Badge>
+        </button>
         <span className="text-muted-foreground ml-2 hidden text-[10px] sm:inline">IPv4 · ARP · ICMP engine</span>
         <Button
           variant="ghost"
@@ -153,6 +168,7 @@ export function BottomPanel() {
       {open && activeTab === "security" && <SecurityTool />}
       {open && activeTab === "operations" && <OperationsTool />}
       {open && activeTab === "storage" && <StorageTool />}
+      {open && activeTab === "cloud" && <CloudNetworkTool />}
       {open && activeTab === "validator" && <LabValidationPanel />}
       {open && activeTab === "status" && (
         <div className="border-border bg-background/55 grid min-h-24 gap-3 border-t p-3 sm:grid-cols-[1fr_1fr_1.4fr]">

@@ -4,7 +4,7 @@ Project ใช้ `schemaVersion` สำหรับ migration ของ persist
 
 ```json
 {
-  "schemaVersion": 9,
+  "schemaVersion": 10,
   "project": { "id": "...", "name": "...", "canvasSettings": {}, "simulationSettings": {} },
   "devices": [],
   "connections": [],
@@ -44,5 +44,7 @@ Schema v7 เพิ่ม typed `security` configuration สำหรับ fire
 Schema v8 adds typed OSPF routing plus `operations` configuration for high availability and monitoring. Dexie v8 normalizes projects and version snapshots with safe defaults while neighbor state, LSDB, HA election, live metrics, alerts and incidents remain derived runtime state.
 
 Schema v9 adds typed `storage` configuration for disks, RAID pools, shares, identities, groups, permissions, quota and rebuild state. Dexie v9 migrates projects and version snapshots; NAS sessions and access results remain runtime state.
+
+Schema v10 adds typed vendor-neutral `cloud` resources. Every resource persists a common identity, type, generic region, network/subnet relationship, tags, status and configuration. VPC/VNet-style networks, subnets, route tables, gateways, Security Groups, Network ACLs, compute, managed services, private endpoints, peering and transit resources migrate through Dexie v10 while individual flow decisions remain derived runtime state.
 
 เมื่อเพิ่ม schema version ให้เพิ่ม migration แบบ pure function จาก N ไป N+1 และเก็บ fixture ของเวอร์ชันเดิมไว้ทดสอบ ห้าม mutate raw data ระหว่าง migration

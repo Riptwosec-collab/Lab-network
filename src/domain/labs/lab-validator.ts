@@ -5,6 +5,7 @@ import { OspfEngine } from "@/engine/protocols/ospf-engine";
 import { IPv4RoutingEngine } from "@/engine/protocols/routing-engine";
 import { HighAvailabilityEngine, MonitoringEngine, TroubleshootingEngine } from "@/engine/operations/operations-engine";
 import { StorageSimulationEngine } from "@/engine/storage/storage-engine";
+import { CloudNetworkEngine } from "@/engine/cloud/cloud-network-engine";
 import type { LabDefinition, LabValidationResult, LabValidator } from "@/types/lab";
 import type { ProjectConfigurationState, TopologySnapshot } from "@/types/network";
 
@@ -29,6 +30,7 @@ export class TopologyLabValidator implements LabValidator {
     if (lab.id === "network-operations") return this.validateMonitoringLab(lab);
     if (lab.id === "troubleshooting") return this.validateTroubleshootingLab(lab);
     if (lab.id === "nas-sharing") return this.validateNasLab(lab);
+    if (lab.id === "cloud-networking") return this.validateCloudNetworkingLab(lab);
     return lab.tasks.map((task) => ({
       taskId: task.id,
       status: "failed",
@@ -446,6 +448,47 @@ export class TopologyLabValidator implements LabValidator {
         message: access?.success
           ? `${share?.protocol.toUpperCase()} access succeeded after network and permission checks`
           : (access?.reason ?? "Enable a share, identity and reachable client path"),
+      },
+    ]);
+  }
+
+  private validateCloudNetworkingLab(lab: LabDefinition): readonly LabValidationResult[] {
+    const cloudState = Object.values(this.configurationState.devices).find(
+      (state) => state.runningConfig.cloud.enabled,
+    );
+    const cloud = cloudState?.runningConfig.cloud;
+    const engine = cloud ? new CloudNetworkEngine(cloud) : undefined;
+    const publicFlow = engine?.simulate({
+      sourceResourceId: "vm-public",
+      destination: "internet",
+      protocol: "tcp",
+      port: 443,
+    });
+    const privateFlow = engine?.simulate({
+      sourceResourceId: "vm-private",
+      destination: "internet",
+      protocol: "tcp",
+      port: 443,
+    });
+    const policies = cloud
+      ? Object.values(cloud.resources).filter((item) => item.type === "security-group" || item.type === "network-acl")
+      : [];
+    return mapChecks(lab, [
+      {
+        passed: publicFlow?.success === true && publicFlow.route?.targetType === "internet-gateway",
+        message: publicFlow?.reason ?? "Configure a public VM, public IP and Internet Gateway default route",
+      },
+      {
+        passed: privateFlow?.success === true && privateFlow.route?.targetType === "nat-gateway",
+        message: privateFlow?.reason ?? "Configure a private subnet default route through a public NAT Gateway",
+      },
+      {
+        passed:
+          policies.some((item) => item.type === "security-group" && item.configuration.stateful === true) &&
+          policies.some((item) => item.type === "network-acl" && item.configuration.stateful === false),
+        message: policies.length
+          ? "Stateful Security Group and stateless ordered Network ACL are attached"
+          : "Attach Security Group and Network ACL policies to cloud resources and subnets",
       },
     ]);
   }
