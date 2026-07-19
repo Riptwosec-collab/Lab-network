@@ -68,7 +68,7 @@ export function usePingWorker(): (topology: TopologySnapshot, request: PingReque
       const timeoutId = setTimeout(() => {
         pendingRef.current.delete(requestId);
         reject(new Error("Ping simulation timeout"));
-      }, 5_000);
+      }, 15_000);
       pendingRef.current.set(requestId, { resolve, reject, timeoutId });
       const loadMessage: WorkerRequest = { type: "LOAD_TOPOLOGY", payload: topology };
       const pingMessage: WorkerRequest = { type: "PING", requestId, payload: request };

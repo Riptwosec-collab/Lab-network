@@ -276,3 +276,21 @@ test("routes a private cloud VM through NAT and opens the cloud inspector", asyn
   await expect(page.getByText("Private Subnet", { exact: true })).toBeVisible();
   expect(errors).toEqual([]);
 });
+
+test("sends and steps through a worker-backed packet lifecycle", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") errors.push(message.text());
+  });
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.goto("/workspace?project=demo-project");
+  await page.getByRole("button", { name: "Packets LIVE", exact: true }).click();
+  await expect(page.getByTestId("packet-simulation-tool")).toBeVisible();
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await expect(page.getByText("packet-1", { exact: true })).toBeVisible();
+  await expect(page.getByText("delivered", { exact: true })).toBeVisible();
+  await expect(page.getByText("packet-delivered", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Step", exact: true }).click();
+  await expect(page.getByText(/PAUSED · EVENT 1\/\d+/)).toBeVisible();
+  expect(errors).toEqual([]);
+});
