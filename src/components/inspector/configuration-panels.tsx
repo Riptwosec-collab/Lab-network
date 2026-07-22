@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import dynamic from "next/dynamic";
-import { Clock3, Play, RotateCcw, Save, TerminalSquare } from "lucide-react";
+import { Activity, Clock3, GitBranch, Play, RotateCcw, Save, Search, TerminalSquare } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -15,6 +15,7 @@ import {
   diffConfiguration,
   renderRunningConfig,
 } from "@/domain/configuration/configuration-engine";
+import { buildConfigurationInsights, searchConfiguration } from "@/domain/configuration/configuration-insights";
 import { analyzeIPv4 } from "@/engine/protocols/ipv4";
 import { deviceRuntimeConfigSchema } from "@/schemas/network.schema";
 import {
@@ -301,6 +302,112 @@ export function ConnectedRoutesPanel({ device }: { device: NetworkDevice }) {
       ) : (
         <p className="text-muted-foreground text-xs">No active connected routes.</p>
       )}
+    </div>
+  );
+}
+
+export function ConfigurationInsightsPanel({ device }: { device: NetworkDevice }) {
+  const configuration = useDeviceConfiguration(device);
+  const [query, setQuery] = useState("");
+  const insights = useMemo(
+    () => buildConfigurationInsights(device, configuration.runningConfig),
+    [configuration.runningConfig, device],
+  );
+  const results = useMemo(() => searchConfiguration(insights, query), [insights, query]);
+  const domainCounts = insights.statusRows.reduce<Record<string, number>>((counts, row) => {
+    counts[row.domain] = (counts[row.domain] ?? 0) + 1;
+    return counts;
+  }, {});
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-3 gap-2">
+        <Card>
+          <CardHeader className="p-3 pb-1">
+            <CardTitle className="flex items-center gap-1.5 text-xs">
+              <Activity className="size-3.5" />
+              Status
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-3 pt-1 font-mono text-sm">{insights.statusRows.length}</CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="p-3 pb-1">
+            <CardTitle className="flex items-center gap-1.5 text-xs">
+              <GitBranch className="size-3.5" />
+              Edges
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-3 pt-1 font-mono text-sm">{insights.dependencyEdges.length}</CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="p-3 pb-1">
+            <CardTitle className="text-xs">Domains</CardTitle>
+          </CardHeader>
+          <CardContent className="p-3 pt-1 font-mono text-sm">{Object.keys(domainCounts).length}</CardContent>
+        </Card>
+      </div>
+
+      <div className="space-y-2">
+        <p className="text-xs font-medium">Status from running config</p>
+        {insights.statusRows.map((row) => (
+          <div key={row.id} className="border-border flex items-center gap-2 rounded-lg border p-3 text-xs">
+            <Badge variant={row.status === "ok" ? "success" : "warning"}>{row.status}</Badge>
+            <div className="min-w-0 flex-1">
+              <p className="font-medium">{row.label}</p>
+              <p className="text-muted-foreground truncate font-mono text-[10px]">{row.detail}</p>
+            </div>
+            <span className="text-muted-foreground">{row.domain}</span>
+          </div>
+        ))}
+      </div>
+
+      <div className="space-y-2">
+        <p className="text-xs font-medium">Dependency graph</p>
+        <div className="max-h-52 space-y-2 overflow-auto">
+          {insights.dependencyEdges.length ? (
+            insights.dependencyEdges.map((edge) => (
+              <div
+                key={`${edge.from}-${edge.to}-${edge.label}`}
+                className="border-border rounded-lg border p-3 text-xs"
+              >
+                <div className="flex items-center gap-2 font-mono text-[10px]">
+                  <span className="truncate">{edge.from}</span>
+                  <GitBranch className="text-muted-foreground size-3.5 shrink-0" />
+                  <span className="truncate">{edge.to}</span>
+                </div>
+                <p className="text-muted-foreground mt-1">
+                  {edge.kind} · {edge.label}
+                </p>
+              </div>
+            ))
+          ) : (
+            <p className="text-muted-foreground text-xs">No dependencies detected in this running config.</p>
+          )}
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <label className="text-muted-foreground block text-xs font-medium">
+          Search running config
+          <div className="mt-1.5 flex items-center gap-2">
+            <Search className="text-muted-foreground size-4" />
+            <Input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="hostname, vlan, ip, acl"
+            />
+          </div>
+        </label>
+        <div className="max-h-56 space-y-1 overflow-auto">
+          {results.map((result) => (
+            <div key={result.path} className="border-border rounded-md border p-2 font-mono text-[10px]">
+              <p className="truncate">{result.path}</p>
+              <p className="text-muted-foreground truncate">{result.value}</p>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

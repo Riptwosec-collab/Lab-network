@@ -34,6 +34,7 @@ import { SwitchingConfigurationPanel } from "@/components/inspector/switching-co
 import {
   CliConfigurationPanel,
   ConfigurationHistoryPanel,
+  ConfigurationInsightsPanel,
   ConfigurationStatusPanel,
   ConnectedRoutesPanel,
   RawConfigurationPanel,
@@ -110,6 +111,7 @@ export function DeviceInspector() {
       "startup-config",
       "history",
       "tables",
+      "insights",
     ]),
   );
   const submitOverview = ({ hostname }: OverviewForm) => {
@@ -327,6 +329,9 @@ export function DeviceInspector() {
           <TabsContent value="tables" className="mt-0">
             <ConnectedRoutesPanel device={device} />
           </TabsContent>
+          <TabsContent value="insights" className="mt-0">
+            <ConfigurationInsightsPanel device={device} />
+          </TabsContent>
 
           {inspectorTabs
             .filter(
@@ -349,6 +354,7 @@ export function DeviceInspector() {
                   "startup-config",
                   "history",
                   "tables",
+                  "insights",
                 ].includes(tab),
             )
             .map((tab) => (
