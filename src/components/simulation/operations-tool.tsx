@@ -6,6 +6,7 @@ import { Activity, AlertTriangle, CheckCircle2, HeartPulse, Network, Search } fr
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { NocDashboard } from "@/components/simulation/noc-dashboard";
 import { TroubleshootingMode } from "@/components/simulation/troubleshooting-mode";
 import { HighAvailabilityEngine, MonitoringEngine, type NetworkIncident } from "@/engine/operations/operations-engine";
 import { OspfEngine } from "@/engine/protocols/ospf-engine";
@@ -55,29 +56,7 @@ export function OperationsTool() {
           <TabsTrigger value="ha">HA / OSPF</TabsTrigger>
         </TabsList>
         <TabsContent value="monitoring" className="mt-2 max-h-56 overflow-auto">
-          {metrics.length ? (
-            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-              {metrics.map((metric) => (
-                <div
-                  key={`${metric.deviceId}:${metric.interfaceId}`}
-                  className="border-border rounded-lg border p-2 text-[10px]"
-                >
-                  <div className="flex justify-between">
-                    <span className="font-medium">
-                      {metric.hostname} · {metric.interfaceName}
-                    </span>
-                    <Badge variant={metric.availability === "up" ? "success" : "warning"}>{metric.availability}</Badge>
-                  </div>
-                  <p className="text-muted-foreground mt-1 font-mono">
-                    util {metric.bandwidthUtilizationPercent}% · {metric.latencyMs}ms · jitter {metric.jitterMs}ms ·
-                    loss {metric.packetLossPercent}% · errors {metric.errorCount}
-                  </p>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <Empty message="Add devices with monitoring enabled to collect topology metrics." />
-          )}
+          <NocDashboard />
         </TabsContent>
         <TabsContent value="troubleshooting" className="mt-2 max-h-56 overflow-auto">
           <TroubleshootingMode />
